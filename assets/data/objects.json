@@ -1,0 +1,96 @@
+[
+  {
+    "id": "D5:E0:59:B6:6F:C8",
+    "name": "Criptas de San Francisco",
+    "name2": "Templo de San Francisco",
+    "description": "Las criptas del Convento de San Francisco en Potosí se encuentran en el subsuelo del altar mayor y fueron utilizadas durante la época colonial como lugares de entierro para frailes, clérigos y familias adineradas. Aunque hoy se conservan restos óseos antiguos, no existen registros públicos que identifiquen a los individuos allí enterrados. El acceso a las criptas es posible a través de visitas guiadas, permitiendo a los visitantes recorrer el subsuelo y observar la disposición de estos antiguos espacios mortuorios, que reflejan las prácticas funerarias y la jerarquía social de la época colonial.",
+    "cryptDescription": "El Convento e Iglesia de San Francisco en Potosí, Bolivia, es una de las construcciones coloniales más importantes de la ciudad. Fundado en 1547 por el fraile franciscano Gaspar de Valverde, fue una de las primeras instituciones religiosas de Potosí, vinculada estrechamente con el desarrollo histórico de la Villa Imperial. La iglesia actual data de principios del siglo XVIII, tras la demolición de la estructura original en 1707 y la conclusión de la nueva edificación en 1726. Su arquitectura barroca‑mestiza, con planta basilical de tres naves, bóvedas, cúpulas y columnas cruciformes, refleja la influencia española y la adaptación local en la época colonial. En su interior se conservan valiosas piezas de arte religioso, como la imagen del Cristo de la Vera Cruz, considerada la más antigua de Bolivia, y pinturas coloniales de artistas como Melchor Pérez de Holguín. El convento también alberga un museo sacro, ofreciendo a los visitantes la posibilidad de admirar altares barrocos, criptas y obras de arte colonial. Desde su torre, se obtiene una vista panorámica del casco antiguo de Potosí y del Cerro Rico, consolidándose como un importante atractivo turístico y símbolo del patrimonio cultural de la ciudad, la cual fue declarada Patrimonio Mundial por la UNESCO en 1987.",
+    "imageUrl": "assets/images/item1/CriptaFranci.jpg",
+    "imageUrl2": "assets/images/item1/francisco4.jpg",
+    "extraImages": [
+      "assets/images/item1/CriptaFranci.jpg",
+      "assets/images/item1/CriptaFranci2.jpg",
+      "assets/images/item1/CriptaFranci3.jpg",
+      "assets/images/item1/CriptaFranci4.jpg"
+    ],
+    "galleryImages": [
+      "assets/images/item1/francisco.jpg",
+      "assets/images/item1/francisco2.jpg",
+      "assets/images/item1/francisco3.jpg",
+      "assets/images/item1/francisco4.jpg",
+      "assets/images/item1/francisco5.jpg",
+      "assets/images/item1/Francisco6.jpg",
+      "assets/images/item1/Francisco7.jpg",
+      "assets/images/item1/francisco8.jpg"
+    ],
+    "location": "Potosí, Bolivia",
+    "direccion": "Calle Tarija, Esq. Nogales N°47",
+    "celular": "26222539",
+    "openingHours": "Lunes a Viernes 1ºTour 15:00 - 2ªTour 16:00",
+    "yearFounded": 1547,
+    "architecturalStyle": "Colonial / Virreinal",
+    "historicalNotes": "Conserva criptas originales con restos históricos.",
+    "entranceFee": "15 BOB",
+    "tourAvailable": true,
+    "category": "Museo / Iglesia",
+    "relatedObjectId": "DD:20:87:F7:72:14"
+  },
+  {
+    "id": "DD:20:87:F7:72:14",
+    "name": "Criptas del Templo de La Merced",
+    "name2": "Museo Mirador Nuestra Señora de la Merced",
+    "description": "Las criptas del Templo de La Merced en Potosí se encuentran en el subsuelo del edificio y fueron utilizadas durante la época colonial como lugares de entierro para religiosos, benefactores y personas de posición acomodada. Estos espacios funerarios conservan la arquitectura original del período colonial, incluyendo bóvedas de piedra y pasadizos subterráneos, y en algunas ocasiones se han abierto al público mediante visitas guiadas o eventos patrimoniales, permitiendo a los visitantes apreciar su valor histórico y comprender las prácticas funerarias y la jerarquía social de la época.",
+    "cryptDescription": "Una de las construcciones que más tiempo demandó y cuya edificación se realizó entre los años 1555 y 1687. La misma fue fundada por los padres mercedarios quienes rinden culto precisamente a la Virgen de las Mercedes, la cual esta Ornamentada con un arco de plata repujada. Esta iglesia corresponde al estilo renacentista. Sufrió varias modificaciones. La planta es de cruz latina, teniendo un cuerpo central y el crucero, con arco triunfal. La portada se la hizo en 1687. Esta labrada en piedra. Consta de dos cuerpos. Las columnas que flanquean la entrada descansan sobre basamentos, cuyos dados llevan labrados temas florales encerrados en casetones.",
+    "imageUrl": "assets/images/item2/CriptaMer.jpg",
+    "imageUrl2": "assets/images/item2/CriptaMer1.png",
+    "extraImages": [
+      "assets/images/item2/CriptaMer.jpg",
+      "assets/images/item2/CriptaMer1.png"
+    ],
+    "galleryImages": [
+      "assets/images/item2/CriptaMer1.png",
+      "assets/images/item2/CriptaMer.jpg",
+      "assets/images/item2/Merced.jpg",
+      "assets/images/item2/Merced2.jpg",
+      "assets/images/item2/Merced3.jpg"
+
+    ],
+    "location": "Potosí, Bolivia",
+    "direccion": "Calle Hoyos Esq. Millares",
+    "celular": "26230250",
+    "openingHours": "Lunes a Domingo: 09:00 a 12:00 / 14:30 a 18:00",
+    "yearFounded": 1555,
+    "yearCompleted": 1687,
+    "architecturalStyle": "Renacentista",
+    "historicalNotes": "Presenta planta de cruz latina, arco triunfal y portada labrada en piedra. Criptas conservan restos históricos de la época colonial.",
+    "entranceFee": "10 BOB",
+    "tourAvailable": true,
+    "category": "Iglesia / Museo / Mirador",
+    "relatedObjectId": "D5:E0:59:B6:6F:C8"
+  },
+  {
+    "id": "OBJ005",
+    "name": "Máquina de Laminado",
+    "description": "Máquina de laminado de la Casa Nacional de Moneda de Potosí. La ceca comenzó a funcionar en 1572. El edificio que se visita hoy se construyó entre 1759 y 1773. Esta máquina preparaba la plata en láminas antes de acuñar las monedas.",
+    "cryptDescription": "La Casa Nacional de Moneda de Potosí empezó a labrar moneda en 1572.\n\nEl edificio que se visita hoy se levantó entre 1759 y 1773.\n\nLa máquina de laminado preparaba los lingotes de plata en láminas antes del golpe de acuñación.",
+    "imageUrl": "assets/images/item5/intem5.jpg",
+    "extraImages": [
+      "assets/images/item5/intem5.jpg",
+      "assets/images/item5/item5.11.webp"
+    ],
+    "galleryImages": [
+      "assets/images/item5/item5.12.jpg"
+    ],
+    "location": "Casa de la Moneda, Potosí",
+    "direccion": "Calle Bolívar, Potosí",
+    "celular": "12345679",
+    "openingHours": "Lunes a Sábado: 09:00 - 16:30",
+    "yearFounded": 1700,
+    "architecturalStyle": "Colonial / Industrial",
+    "historicalNotes": "Utilizada para laminar lingotes de plata antes de acuñar las monedas. La ceca potosina comenzó en 1572 y el edificio actual corresponde a las obras de 1759 a 1773.",
+    "entranceFee": "Gratuito",
+    "tourAvailable": true,
+    "category": "Museo / Industria",
+    "relatedObjectId": null
+  }
+]

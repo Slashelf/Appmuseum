@@ -1,0 +1,54 @@
+[
+  {
+    "id": "sf1",
+    "title": "Museo Eclesiástico Franciscano",
+    "location": "Potosí, Bolivia",
+    "description": "Museo ubicado en el convento más antiguo de Bolivia, fundado en 1547. Exhibe arte virreinal eclesiástico, incluyendo esculturas, pinturas y objetos religiosos. Bajo el altar mayor se encuentran criptas históricas donde fueron enterrados frailes, clérigos y familias adineradas durante la época colonial.",
+    "imageUrl": "assets/images/recomendados/2.jpg",
+    "extraImages": [
+      "assets/images/recomendados/2_1.jpg",
+      "assets/images/recomendados/2_2.jpg"
+    ],
+    "coordinates": {
+      "latitude": -19.5885,
+      "longitude": -65.7583,
+      "altitude": 4062
+    },
+    "openingHours": "Lunes a Sábado: 09:00 - 16:00",
+    "yearFounded": 1547,
+    "yearCompleted": null,
+    "architecturalStyle": "Colonial / Virreinal",
+    "historicalNotes": "El convento es el más antiguo de Bolivia y conserva criptas originales con restos históricos.",
+    "entranceFee": "Gratuito",
+    "tourAvailable": true,
+    "category": "Museo / Iglesia",
+    "relatedObjectId": "merced1"
+  },
+  {
+    "id": "merced1",
+    "title": "Museo Mirador Nuestra Señora de la Merced",
+    "location": "Potosí, Bolivia",
+    "description": "Una de las construcciones que más tiempo demandó y cuya edificación se realizó entre los años 1555 y 1687. Fundada por los padres mercedarios, rinde culto a la Virgen de las Mercedes, ornamentada con un arco de plata repujada. Bajo su altar mayor se encuentran criptas históricas que servían de sepultura para religiosos y familias adineradas.",
+    "celular": "26230250",
+    "direccion": "Calle Hoyos Esq. Millares",
+    "imageUrl": "assets/images/recomendados/1.jpg",
+    "extraImages": [
+      "assets/images/recomendados/1_1.jpg",
+      "assets/images/recomendados/1_2.jpg"
+    ],
+    "coordinates": {
+      "latitude": -19.58917797216919,
+      "longitude": -65.7570871755414,
+      "altitude": 4060
+    },
+    "openingHours": "Lunes a Domingo: 09:00 a 12:00 14:30 a 18:00",
+    "yearFounded": 1555,
+    "yearCompleted": 1687,
+    "architecturalStyle": "Renacentista",
+    "historicalNotes": "La iglesia presenta planta de cruz latina con cuerpo central y crucero, arco triunfal y portada labrada en piedra. Las criptas conservan restos históricos de la época colonial.",
+    "entranceFee": "Gratuito",
+    "tourAvailable": true,
+    "category": "Iglesia / Museo / Mirador",
+    "relatedObjectId": "sf1"
+  }
+]

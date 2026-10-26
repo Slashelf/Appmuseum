@@ -1,0 +1,8 @@
+Coloca aquí los mp3 locales, uno por lugar. La aplicación no inventa audio si el archivo no está.
+
+Nombres esperados:
+- D5-E0-59-B6-6F-C8.mp3  Criptas de San Francisco
+- DD-20-87-F7-72-14.mp3  Criptas de La Merced
+- OBJ005.mp3             Máquina de Laminado
+
+Los dos puntos del identificador se cambian por guiones.

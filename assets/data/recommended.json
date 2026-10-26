@@ -1,0 +1,53 @@
+[
+    {
+    "title": "Museo Eclesiástico Franciscano",
+    "location": "Potosí, Bolivia",
+    "description": "Museo ubicado en el convento más antiguo de Bolivia, fundado en 1547. Exhibe arte virreinal eclesiástico, incluyendo esculturas, pinturas y objetos religiosos.",
+    "imageUrl": "assets/images/recomendados/2.jpg",
+    "coordinates": {
+      "latitude": -19.5885,
+      "longitude": -65.7583,
+      "altitude": 4062
+    },
+    "openingHours": "Lunes a Sábado: 09:00 - 16:00"
+  },
+  {
+    "title": "Museo Mirador Nuestra Señora de la Merced",
+    "location": "Potosí, Bolivia",
+    "description": "Una de las construcciones que más tiempo demandó y cuya edificación se realizó entre los años 1555 y 1687. La misma fue fundada por los padres mercedarios quienes rinden culto precisamente a la Virgen de las Mercedes, la cual esta Ornamentada con un arco de plata repujada. Esta iglesia corresponde al estilo renacentista. Sufrió varias modificaciones. La planta es de cruz latina, teniendo un cuerpo central y el crucero, con arco triunfal. La portada se la hizo en 1687. Esta labrada en piedra. Consta de dos cuerpos. Las columnas que flanquean la entrada descansan sobre basamentos, cuyos dados llevan labrados temas florales encerrados en casetones.",
+    "celuldar": "26230250",
+    "direccion": "Calle Hoyos Esq. Millares",
+    "imageUrl": "assets/images/recomendados/1.jpg",
+    "coordinates": {
+      "latitude": -19.58917797216919,
+      "longitude": -65.7570871755414,
+      "altitude": 4060
+    },
+    "openingHours": "Lunes a Domingo: 09:00 a 12:00 14:30 a 18:00"
+  },
+  {
+    "title": "Museo La Carroza",
+    "location": "Potosí, Bolivia",
+    "description": "Casa museo que muestra la historia y tradición de las carrozas en Potosí, con una colección de vehículos antiguos y objetos relacionados.",
+    "imageUrl": "assets/images/recomendados/3.jpg",
+    "coordinates": {
+      "latitude": -19.5773,
+      "longitude": -65.7547,
+      "altitude": 4065
+    },
+    "openingHours": "Martes a Domingo: 10:00 - 18:00"
+  },
+
+  {
+    "title": "Museo Tambo Quirquincho",
+    "location": "Sucre, Bolivia",
+    "description": "Museo histórico que resguarda artefactos de la época colonial y la independencia de Bolivia.",
+    "imageUrl": "assets/images/recomendados/4.webp",
+    "coordinates": {
+      "latitude": -19.0333,
+      "longitude": -65.2633,
+      "altitude": 2790
+    },
+    "openingHours": "Lunes a Domingo: 08:30 - 17:30"
+  }
+]
