@@ -66,7 +66,7 @@ class _HomeTabState extends State<HomeTab> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      t.get('homeBannerSubtitle') ?? 'Atractivo de nueva construcción, donde se aprecia historia de lo que fue y lo que es nuestra cultura funeraria Potosina, cimientos de la Basílica Catedral como también un vistazo a los espacios de entierro, llamadas CRIPTAS, siendo espacios arquitectónicos subterráneos limitados que durante la época colonial cumplieron su función de sitios funerarios, también conocidos como cementerios conventuales ya que las iglesias con conventos presentan estos lugares para entierros, usualmente ubicada debajo de la iglesia.',
+                      t.get('homeBannerSubtitle') ?? 'La Casa Nacional de Moneda de Potosí guarda la sala de Melchor Pérez de Holguín, la Brocha de Oro, con los evangelistas de 1724 y el San Francisco de Asís de 1694.',
                       style: AppFonts.poppins(fontSize: 15, height: 1.4, color: GuidePalette.muted),
                     ),
                   ),

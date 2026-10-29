@@ -2,15 +2,22 @@ import 'beacon_config.dart';
 
 /// Evita abrir el mismo lugar dos veces por un pico o un corte breve de señal.
 ///
-/// Hacen falta [BeaconConfig.confirmReadings] lecturas seguidas, iguales o
-/// mejores que [BeaconConfig.rssiEnter], y debe haber pasado
-/// [BeaconConfig.openCooldown] desde la apertura anterior.
+/// Hacen falta [BeaconConfig.confirmReadings] lecturas dentro del radio,
+/// en [BeaconConfig.confirmWindow], para abrir. Una lectura fuera no las borra.
+enum ExhibitionChoice { ignore, same, show }
+
 class BeaconSession {
   final Set<String> open = {};
   final Map<String, DateTime> _lastSeen = {};
   final Map<String, DateTime> _awaySince = {};
   final Map<String, List<DateTime>> _hits = {};
+  final Map<String, List<int>> _samples = {};
+  final Map<String, int> _level = {};
   DateTime? _lastOpen;
+  String? exhibitionKey;
+  String? _rival;
+  DateTime? _rivalSince;
+  DateTime? _rivalHeard;
 
   void reading({
     required List<String> keys,
@@ -33,11 +40,6 @@ class BeaconSession {
     }
 
     for (final key in keys) {
-      final previous = _lastSeen[key];
-      if (previous != null && now.difference(previous) >= grace) {
-        open.remove(key);
-        _awaySince.remove(key);
-      }
       _lastSeen[key] = now;
 
       if (rssi >= enter) {
@@ -58,20 +60,20 @@ class BeaconSession {
     String key,
     int rssi, {
     int enter = BeaconConfig.rssiEnter,
+    int exitRssi = BeaconConfig.rssiExit,
     DateTime? now,
     int required = BeaconConfig.confirmReadings,
     Duration window = BeaconConfig.confirmWindow,
     Duration cooldown = BeaconConfig.openCooldown,
   }) {
     final moment = now ?? DateTime.now();
-    if (rssi < enter) {
-      _hits.remove(key);
-      return false;
-    }
     if (open.contains(key)) return false;
 
     final hits = _hits.putIfAbsent(key, () => <DateTime>[]);
     hits.removeWhere((time) => moment.difference(time) > window);
+    // La primera tiene que entrar al radio. La siguiente vale si no se salió.
+    final counts = hits.isEmpty ? rssi >= enter : rssi >= exitRssi;
+    if (!counts) return false;
     hits.add(moment);
     if (hits.length < required) return false;
     if (_lastOpen != null && moment.difference(_lastOpen!) < cooldown) {
@@ -90,6 +92,82 @@ class BeaconSession {
     _awaySince.remove(key);
   }
 
+  /// Promedio de las últimas [BeaconConfig.smoothCount] lecturas de esta clave.
+  int smooth(String key, int rssi) {
+    final bucket = _samples.putIfAbsent(key, () => <int>[]);
+    bucket.add(rssi);
+    final extra = bucket.length - BeaconConfig.smoothCount;
+    if (extra > 0) bucket.removeRange(0, extra);
+    final sum = bucket.fold<int>(0, (total, value) => total + value);
+    return (sum / bucket.length).round();
+  }
+
+  /// Decide si esta clave debe mostrarse. [rssi] dice si está dentro de la zona.
+  /// Si otra cripta también está en su zona, se cambia a los 3 segundos.
+  /// No cambia la exhibición actual: eso ocurre en [commitExhibition].
+  ExhibitionChoice consider(
+    String key,
+    int rssi,
+    DateTime now, {
+    required bool justOpened,
+    int? level,
+  }) {
+    final strength = level ?? rssi;
+    _level[key] = strength;
+    if (exhibitionKey == key) {
+      if (rssi >= BeaconConfig.rssiExit) return ExhibitionChoice.same;
+      return ExhibitionChoice.ignore;
+    }
+    if (rssi < BeaconConfig.rssiEnter) {
+      _dropRival(key);
+      return ExhibitionChoice.ignore;
+    }
+    if (exhibitionKey == null) {
+      return justOpened ? ExhibitionChoice.show : ExhibitionChoice.ignore;
+    }
+    final previous = _rival == key ? _rivalHeard : null;
+    if (_rival != key ||
+        previous == null ||
+        now.difference(previous) > BeaconConfig.switchHold) {
+      _rival = key;
+      _rivalSince = now;
+      _rivalHeard = now;
+      return ExhibitionChoice.ignore;
+    }
+    _rivalHeard = now;
+    final since = _rivalSince;
+    if (since == null || now.difference(since) < BeaconConfig.switchHold) {
+      return ExhibitionChoice.ignore;
+    }
+    return ExhibitionChoice.show;
+  }
+
+  void commitExhibition(String key) {
+    exhibitionKey = key;
+    _rival = null;
+    _rivalSince = null;
+    _rivalHeard = null;
+  }
+
+  /// Suelta solo las claves de la exhibición que se dejó de oír.
+  void dropExhibition(Iterable<String> keys) {
+    for (final key in keys) {
+      release(key);
+      _level.remove(key);
+    }
+    exhibitionKey = null;
+    _rival = null;
+    _rivalSince = null;
+    _rivalHeard = null;
+  }
+
+  void _dropRival(String key) {
+    if (_rival != key) return;
+    _rival = null;
+    _rivalSince = null;
+    _rivalHeard = null;
+  }
+
   void release(String key) {
     open.remove(key);
     _awaySince.remove(key);
@@ -100,7 +178,13 @@ class BeaconSession {
     _lastSeen.clear();
     _awaySince.clear();
     _hits.clear();
+    _samples.clear();
+    _level.clear();
     _lastOpen = null;
+    exhibitionKey = null;
+    _rival = null;
+    _rivalSince = null;
+    _rivalHeard = null;
   }
 }
 
@@ -115,10 +199,42 @@ class BeaconIdentity {
     ];
     final keys = <String>[];
     for (final value in raw) {
-      final trimmed = value.trim();
-      if (trimmed.isEmpty || keys.contains(trimmed)) continue;
-      keys.add(trimmed);
+      _addKey(keys, value);
+      final mac = macOf(value);
+      if (mac != null) _addKey(keys, mac);
     }
     return keys;
+  }
+
+  /// Lectura útil del beacon. Un decimal cuenta. 0 y 127 no son señal.
+  static int? readRssi(Object? value) {
+    final int? parsed;
+    if (value is int) {
+      parsed = value;
+    } else if (value is num) {
+      parsed = value.round();
+    } else {
+      final text = '${value ?? ''}'.trim();
+      parsed = text.isEmpty ? null : int.tryParse(text) ?? double.tryParse(text)?.round();
+    }
+    if (parsed == null || parsed >= 0) return null;
+    return parsed;
+  }
+
+  /// MAC canónica `AA:BB:CC:DD:EE:FF`, venga con dos puntos o pegada.
+  static String? macOf(String value) {
+    final hex = value.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
+    if (hex.length != 12) return null;
+    final pairs = <String>[];
+    for (var index = 0; index < 12; index += 2) {
+      pairs.add(hex.substring(index, index + 2).toUpperCase());
+    }
+    return pairs.join(':');
+  }
+
+  static void _addKey(List<String> keys, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || keys.contains(trimmed)) return;
+    keys.add(trimmed);
   }
 }

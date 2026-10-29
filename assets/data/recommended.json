@@ -1,29 +1,29 @@
 [
     {
-    "title": "Museo Eclesiástico Franciscano",
-    "location": "Potosí, Bolivia",
-    "description": "Museo ubicado en el convento más antiguo de Bolivia, fundado en 1547. Exhibe arte virreinal eclesiástico, incluyendo esculturas, pinturas y objetos religiosos.",
+    "title": "San Mateo y los cuatro evangelistas",
+    "location": "Casa Nacional de Moneda, Potosí",
+    "description": "Serie de Melchor Pérez de Holguín, pintada en 1724 y conservada en su sala de la Casa Nacional de Moneda. En el San Mateo el pintor dejó escrito que lo hizo en Potosí ese año.",
     "imageUrl": "assets/images/recomendados/2.jpg",
     "coordinates": {
-      "latitude": -19.5885,
-      "longitude": -65.7583,
+      "latitude": -19.5886111,
+      "longitude": -65.7541667,
       "altitude": 4062
     },
-    "openingHours": "Lunes a Sábado: 09:00 - 16:00"
+    "openingHours": "Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00"
   },
   {
-    "title": "Museo Mirador Nuestra Señora de la Merced",
-    "location": "Potosí, Bolivia",
-    "description": "Una de las construcciones que más tiempo demandó y cuya edificación se realizó entre los años 1555 y 1687. La misma fue fundada por los padres mercedarios quienes rinden culto precisamente a la Virgen de las Mercedes, la cual esta Ornamentada con un arco de plata repujada. Esta iglesia corresponde al estilo renacentista. Sufrió varias modificaciones. La planta es de cruz latina, teniendo un cuerpo central y el crucero, con arco triunfal. La portada se la hizo en 1687. Esta labrada en piedra. Consta de dos cuerpos. Las columnas que flanquean la entrada descansan sobre basamentos, cuyos dados llevan labrados temas florales encerrados en casetones.",
-    "celuldar": "26230250",
-    "direccion": "Calle Hoyos Esq. Millares",
+    "title": "San Francisco de Asís",
+    "location": "Casa Nacional de Moneda, Potosí",
+    "description": "Lienzo firmado en 1694 por Melchor Pérez de Holguín. En la Casa Nacional de Moneda hace pareja con San Pedro de Alcántara, de su primera etapa de monjes y ascetas.",
+    "celular": "26222777",
+    "direccion": "Calle Ayacucho, entre Quijarro y Bustillos",
     "imageUrl": "assets/images/recomendados/1.jpg",
     "coordinates": {
-      "latitude": -19.58917797216919,
-      "longitude": -65.7570871755414,
+      "latitude": -19.5886111,
+      "longitude": -65.7541667,
       "altitude": 4060
     },
-    "openingHours": "Lunes a Domingo: 09:00 a 12:00 14:30 a 18:00"
+    "openingHours": "Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00"
   },
   {
     "title": "Museo La Carroza",

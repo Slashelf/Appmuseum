@@ -713,6 +713,39 @@ class ChatFaq {
     }
   }
 
+  static String missingKey(String languageCode) {
+    switch (_language(languageCode)) {
+      case 'en':
+        return 'The DeepSeek key is missing. Paste it to get an answer.';
+      case 'de':
+        return 'Der DeepSeek-Schlüssel fehlt. Fügen Sie ihn ein, um eine Antwort zu erhalten.';
+      default:
+        return 'Falta la clave de DeepSeek. Pégala para poder responder.';
+    }
+  }
+
+  static String couldNotConnect(String languageCode) {
+    switch (_language(languageCode)) {
+      case 'en':
+        return 'I could not connect. Try again.';
+      case 'de':
+        return 'Ich konnte keine Verbindung herstellen. Versuchen Sie es erneut.';
+      default:
+        return 'No pude conectar, intenta de nuevo.';
+    }
+  }
+
+  static String noCredit(String languageCode) {
+    switch (_language(languageCode)) {
+      case 'en':
+        return 'DeepSeek has no credit. Recharge the account to continue.';
+      case 'de':
+        return 'DeepSeek hat kein Guthaben. Laden Sie das Konto auf, um fortzufahren.';
+      default:
+        return 'DeepSeek no tiene crédito. Recarga la cuenta para seguir.';
+    }
+  }
+
   static const _offTopicWords = {
     'dolor', 'cabeza', 'enfermedad', 'medico', 'medicina', 'medicamento',
     'sintoma', 'sintomas', 'hospital', 'pastilla', 'doctor', 'fiebre',

@@ -1,9 +1,9 @@
 /// Pedido a ElevenLabs. La clave viaja solo en la cabecera, nunca en el cuerpo.
+///
+/// No hay un id de voz fijo: Daniel es una voz inglesa. El id lo elige
+/// Ajustes o, si está vacío, el listado oficial de voces premade.
 class ElevenLabsSpeech {
   static const model = 'eleven_flash_v2_5';
-
-  /// Daniel, narrador masculino de las voces predeterminadas.
-  static const voiceId = 'onwK4e9ZLuTAKqWW03F9';
 
   static Uri streamUri(String voice) {
     return Uri.parse(
@@ -12,18 +12,37 @@ class ElevenLabsSpeech {
     );
   }
 
-  static Map<String, dynamic> body(String text) {
-    return {
+  /// `es`, `en`, `de` o `pt`. Null si el código no es uno de esos.
+  static String? normalizeLanguage(String? raw) {
+    final code = raw?.trim().toLowerCase() ?? '';
+    if (code.startsWith('pt')) return 'pt';
+    if (code.startsWith('en')) return 'en';
+    if (code.startsWith('de')) return 'de';
+    if (code.startsWith('es')) return 'es';
+    return null;
+  }
+
+  static Map<String, dynamic> body(
+    String text, {
+    String? previousText,
+    String? languageCode,
+  }) {
+    final payload = <String, dynamic>{
       'text': text,
       'model_id': model,
       'voice_settings': {
-        'stability': 0.45,
+        'stability': 0.4,
         'similarity_boost': 0.75,
-        'style': 0,
-        'use_speaker_boost': false,
+        'style': 0.35,
+        'use_speaker_boost': true,
         'speed': 1.0,
       },
     };
+    final language = normalizeLanguage(languageCode);
+    if (language != null) payload['language_code'] = language;
+    final previous = previousText?.trim() ?? '';
+    if (previous.isNotEmpty) payload['previous_text'] = previous;
+    return payload;
   }
 
   static Map<String, String> headers(String apiKey) {

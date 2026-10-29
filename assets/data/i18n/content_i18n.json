@@ -2,58 +2,58 @@
   "places": {
     "D5:E0:59:B6:6F:C8": {
       "en": {
-        "name": "Crypts of San Francisco",
-        "name2": "San Francisco Church",
-        "description": "The crypts of the Convent of San Francisco in Potosí lie beneath the high altar. In colonial times they were burial places for friars, clergy and wealthy families. Ancient skeletal remains are still preserved, but there is no public record of the people buried there. Guided visits lead through the underground rooms and show how these spaces reflect the funerary customs and social hierarchy of the colonial period.",
-        "cryptDescription": "The Convent and Church of San Francisco in Potosí, Bolivia, is one of the city's most important colonial buildings. It was founded in 1547 by the Franciscan friar Gaspar de Valverde and was one of the first religious houses in Potosí, closely tied to the history of the Imperial City. The present church dates from the early eighteenth century, after the original building was demolished in 1707 and the new one was finished in 1726. Its mestizo Baroque architecture, with a three-aisled basilican plan, vaults, domes and cruciform columns, shows Spanish influence adapted to the colonial Andes. Inside are important religious works, including the Cristo de la Vera Cruz, considered the oldest image of its kind in Bolivia, and colonial paintings by artists such as Melchor Pérez de Holguín. The convent also houses a sacred-art museum, with Baroque altars, crypts and colonial works. From its tower there is a wide view of Potosí's historic centre and the Cerro Rico. The city was declared a UNESCO World Heritage Site in 1987.",
-        "location": "Potosí, Bolivia",
-        "direccion": "Calle Tarija, corner of Nogales No. 47",
-        "openingHours": "Monday to Friday, 1st tour 15:00, 2nd tour 16:00",
-        "architecturalStyle": "Colonial / Viceregal",
-        "historicalNotes": "The original crypts and historical remains are preserved.",
-        "entranceFee": "15 BOB",
-        "category": "Museum / Church"
+        "name": "Saint Matthew and the four evangelists",
+        "name2": "Melchor Pérez de Holguín room",
+        "description": "The Casa Nacional de Moneda in Potosí keeps the series of the four evangelists that Melchor Pérez de Holguín painted in 1724. On Saint Matthew the painter wrote that he made it in Potosí that year. Matthew wears a blue tunic and a red cloak, with a book, an inkwell and a pen nearby. With John, Mark and Luke, the series is among the finest work of his last period and hangs in the room dedicated to him.",
+        "cryptDescription": "Melchor Pérez de Holguín, called in his own time the Golden Brush, was the leading painter of the Potosí school. He lived most of his life in Potosí and died around 1732. The Casa Nacional de Moneda holds the largest group of his work and gives him a room of his own. The full-length series of the four evangelists is signed 1724 on the canvas of Saint Matthew. Saint John appears in a green tunic and a red cloak, with the book, the pen and the eagle that identifies him. Together with Mark and Luke, these paintings show the master's final period, with softer figures. The exhibition is inside the Casa de la Moneda: it is the painting, not a church.",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "direccion": "Calle Ayacucho, between Quijarro and Bustillos",
+        "openingHours": "Monday to Friday 8:30 to 16:30; Saturday and Sunday 9:00 to 13:00",
+        "architecturalStyle": "Colonial painting of Potosí",
+        "historicalNotes": "Series signed by Melchor Pérez de Holguín in Potosí in 1724. It is kept in the painter's room at the Casa Nacional de Moneda.",
+        "entranceFee": "20 Bs for nationals, 70 Bs for foreign visitors",
+        "category": "Museum / Painting"
       },
       "de": {
-        "name": "Krypten von San Francisco",
-        "name2": "Kirche San Francisco",
-        "description": "Die Krypten des Konvents San Francisco in Potosí liegen unter dem Hochaltar. In der Kolonialzeit dienten sie als Grabstätten für Ordensleute, Kleriker und wohlhabende Familien. Alte Gebeine sind noch erhalten, doch es gibt keine öffentlichen Aufzeichnungen über die dort Bestatteten. Führungen führen durch die unterirdischen Räume und zeigen, wie diese Orte die Begräbnisbräuche und die soziale Ordnung der Kolonialzeit widerspiegeln.",
-        "cryptDescription": "Konvent und Kirche San Francisco in Potosí, Bolivien, gehören zu den wichtigsten kolonialen Bauten der Stadt. Gegründet wurde der Konvent 1547 vom Franziskaner Gaspar de Valverde, als eines der ersten religiösen Häuser Potosís und eng verbunden mit der Geschichte der Villa Imperial. Die heutige Kirche stammt vom Anfang des 18. Jahrhunderts: Der ursprüngliche Bau wurde 1707 abgerissen und der neue 1726 vollendet. Die mestizische Barockarchitektur mit dreischiffiger Basilika, Gewölben, Kuppeln und kreuzförmigen Säulen verbindet spanische Vorbilder mit der kolonialen Andenwelt. Im Inneren befinden sich bedeutende Werke, darunter der Cristo de la Vera Cruz, das wohl älteste Bild dieser Art in Bolivien, und koloniale Gemälde von Künstlern wie Melchor Pérez de Holguín. Der Konvent beherbergt auch ein Museum für sakrale Kunst mit Barockaltären, Krypten und kolonialen Arbeiten. Vom Turm sieht man die Altstadt von Potosí und den Cerro Rico. Die Stadt wurde 1987 zum UNESCO-Welterbe erklärt.",
-        "location": "Potosí, Bolivien",
-        "direccion": "Calle Tarija, Ecke Nogales Nr. 47",
-        "openingHours": "Montag bis Freitag, 1. Führung 15:00, 2. Führung 16:00",
-        "architecturalStyle": "Kolonial / Vizeköniglich",
-        "historicalNotes": "Die ursprünglichen Krypten mit historischen Überresten sind erhalten.",
-        "entranceFee": "15 BOB",
-        "category": "Museum / Kirche"
+        "name": "Der heilige Matthäus und die vier Evangelisten",
+        "name2": "Saal von Melchor Pérez de Holguín",
+        "description": "Die Casa Nacional de Moneda in Potosí bewahrt die Serie der vier Evangelisten, die Melchor Pérez de Holguín 1724 malte. Auf dem heiligen Matthäus schrieb der Maler, dass er ihn in diesem Jahr in Potosí schuf. Matthäus trägt eine blaue Tunika und einen roten Mantel, daneben ein Buch, ein Tintenfass und eine Feder. Mit Johannes, Markus und Lukas gehört die Serie zum Besten seiner letzten Phase und hängt in dem Saal, der ihm gewidmet ist.",
+        "cryptDescription": "Melchor Pérez de Holguín, zu seiner Zeit der Goldene Pinsel genannt, war der führende Maler der Schule von Potosí. Er lebte fast sein ganzes Leben in Potosí und starb um 1732. Die Casa Nacional de Moneda besitzt die wichtigste Gruppe seiner Werke und widmet ihm einen Saal. Die ganzfigurige Serie der vier Evangelisten ist 1724 auf dem Leinwandbild des heiligen Matthäus signiert. Der heilige Johannes erscheint in grüner Tunika und rotem Mantel, mit Buch, Feder und dem Adler, der ihn kenntlich macht. Zusammen mit Markus und Lukas zeigen diese Bilder die letzte Phase des Meisters, mit weicheren Gestalten. Die Ausstellung steht in der Casa de la Moneda: es ist das Gemälde, keine Kirche.",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "direccion": "Calle Ayacucho, zwischen Quijarro und Bustillos",
+        "openingHours": "Montag bis Freitag 8:30 bis 16:30; Samstag und Sonntag 9:00 bis 13:00",
+        "architecturalStyle": "Koloniale Malerei von Potosí",
+        "historicalNotes": "Serie, die Melchor Pérez de Holguín 1724 in Potosí signierte. Sie wird im Saal des Malers in der Casa Nacional de Moneda bewahrt.",
+        "entranceFee": "20 Bs für Einheimische, 70 Bs für ausländische Besucher",
+        "category": "Museum / Malerei"
       }
     },
     "DD:20:87:F7:72:14": {
       "en": {
-        "name": "Crypts of the Church of La Merced",
-        "name2": "Mirador Museum of Our Lady of Mercy",
-        "description": "The crypts of the Church of La Merced in Potosí are beneath the building. In colonial times they were used as burial places for religious, benefactors and people of means. The original colonial architecture remains, including stone vaults and underground passages. Guided visits and heritage events sometimes open the crypts to the public, so visitors can see their historical value and understand the funerary customs and social hierarchy of the period.",
-        "cryptDescription": "This was one of the buildings that took the longest to complete, between 1555 and 1687. It was founded by the Mercedarian fathers, who venerate the Virgin of Mercy, ornamented with a chased silver arch. The church follows the Renaissance style and was altered several times. The plan is a Latin cross, with a central body, a transept and a triumphal arch. The stone portal was made in 1687 and has two storeys. The columns flanking the entrance rest on bases whose panels are carved with floral motifs set in coffers.",
-        "location": "Potosí, Bolivia",
-        "direccion": "Calle Hoyos, corner of Millares",
-        "openingHours": "Monday to Sunday: 09:00 to 12:00 / 14:30 to 18:00",
-        "architecturalStyle": "Renaissance",
-        "historicalNotes": "Latin-cross plan, triumphal arch and a carved stone portal. The crypts preserve colonial remains.",
-        "entranceFee": "10 BOB",
-        "category": "Church / Museum / Viewpoint"
+        "name": "Saint Francis of Assisi",
+        "name2": "Saint Peter of Alcántara",
+        "description": "In the Melchor Pérez de Holguín room of the Casa Nacional de Moneda hangs a Saint Francis of Assisi signed in 1694. It is paired with a Saint Peter of Alcántara by the same painter. They belong to his first period, when he painted monks and ascetics, with the weight on the face and the light. The painting is in the museum, not in a convent.",
+        "cryptDescription": "Around 1694 Melchor Pérez de Holguín, the Golden Brush of Potosí, signed this Saint Francis of Assisi. In the Casa Nacional de Moneda it hangs beside a Saint Peter of Alcántara. That early period is given to friars and mystics, single figures close to the chiaroscuro he took from European prints. Holguín worked almost always in Potosí, and the largest group of his paintings is kept in this house. The room that bears his name shows the path from those austere saints to the large series of his old age, such as the evangelists of 1724.",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "direccion": "Calle Ayacucho, between Quijarro and Bustillos",
+        "openingHours": "Monday to Friday 8:30 to 16:30; Saturday and Sunday 9:00 to 13:00",
+        "architecturalStyle": "Colonial painting of Potosí",
+        "historicalNotes": "Canvas signed in 1694. In the Casa Nacional de Moneda it is paired with Saint Peter of Alcántara.",
+        "entranceFee": "20 Bs for nationals, 70 Bs for foreign visitors",
+        "category": "Museum / Painting"
       },
       "de": {
-        "name": "Krypten der Kirche La Merced",
-        "name2": "Museum und Aussichtspunkt Nuestra Señora de la Merced",
-        "description": "Die Krypten der Kirche La Merced in Potosí liegen unter dem Gebäude. In der Kolonialzeit dienten sie als Grabstätten für Ordensleute, Stifter und wohlhabende Personen. Die koloniale Architektur ist erhalten, darunter Steingewölbe und unterirdische Gänge. Bei Führungen und besonderen Anlässen werden die Krypten geöffnet, damit Besucher ihren historischen Wert und die Begräbnisbräuche der Zeit verstehen können.",
-        "cryptDescription": "Dieser Bau dauerte besonders lange, von 1555 bis 1687. Gegründet wurde er von den Mercedariern, die die Jungfrau der Barmherzigkeit verehren. Sie ist mit einem getriebenen Silberbogen geschmückt. Die Kirche folgt dem Renaissancestil und wurde mehrfach verändert. Der Grundriss ist ein lateinisches Kreuz mit Mittelraum, Querschiff und Triumphbogen. Das steinerne Portal von 1687 hat zwei Geschosse. Die Säulen neben dem Eingang stehen auf Sockeln, deren Felder florale Motive in Kassetten tragen.",
-        "location": "Potosí, Bolivien",
-        "direccion": "Calle Hoyos, Ecke Millares",
-        "openingHours": "Montag bis Sonntag: 09:00 bis 12:00 / 14:30 bis 18:00",
-        "architecturalStyle": "Renaissance",
-        "historicalNotes": "Lateinisches Kreuz, Triumphbogen und steinernes Portal. Die Krypten bewahren koloniale Überreste.",
-        "entranceFee": "10 BOB",
-        "category": "Kirche / Museum / Aussichtspunkt"
+        "name": "Der heilige Franziskus von Assisi",
+        "name2": "Der heilige Petrus von Alcántara",
+        "description": "Im Saal von Melchor Pérez de Holguín in der Casa Nacional de Moneda hängt ein heiliger Franziskus von Assisi, signiert 1694. Er bildet ein Paar mit einem heiligen Petrus von Alcántara desselben Malers. Sie gehören zu seiner ersten Phase, als er Mönche und Asketen malte, mit dem Gewicht auf dem Gesicht und dem Licht. Das Bild ist im Museum, nicht in einem Konvent.",
+        "cryptDescription": "Um 1694 signierte Melchor Pérez de Holguín, der Goldene Pinsel von Potosí, diesen heiligen Franziskus von Assisi. In der Casa Nacional de Moneda hängt er neben einem heiligen Petrus von Alcántara. Diese frühe Phase gilt den Ordensleuten und Mystikern, einzelnen Gestalten, nahe dem Helldunkel, das der Maler aus europäischen Stichen übernahm. Holguín arbeitete fast immer in Potosí, und die größte Gruppe seiner Bilder wird in diesem Haus bewahrt. Der Saal, der seinen Namen trägt, zeigt den Weg von diesen strengen Heiligen zu den großen Serien seines Alters, wie den Evangelisten von 1724.",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "direccion": "Calle Ayacucho, zwischen Quijarro und Bustillos",
+        "openingHours": "Montag bis Freitag 8:30 bis 16:30; Samstag und Sonntag 9:00 bis 13:00",
+        "architecturalStyle": "Koloniale Malerei von Potosí",
+        "historicalNotes": "Leinwand, 1694 signiert. In der Casa Nacional de Moneda bildet sie ein Paar mit dem heiligen Petrus von Alcántara.",
+        "entranceFee": "20 Bs für Einheimische, 70 Bs für ausländische Besucher",
+        "category": "Museum / Malerei"
       }
     },
     "OBJ005": {
@@ -86,32 +86,32 @@
     }
   },
   "recommendations": {
-    "Museo Eclesiástico Franciscano": {
+    "San Mateo y los cuatro evangelistas": {
       "en": {
-        "title": "Franciscan Ecclesiastical Museum",
-        "location": "Potosí, Bolivia",
-        "description": "Museum in the oldest convent in Bolivia, founded in 1547. It shows viceregal ecclesiastical art, including sculpture, painting and religious objects.",
-        "openingHours": "Monday to Saturday: 09:00 - 16:00"
+        "title": "Saint Matthew and the four evangelists",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "description": "Series painted by Melchor Pérez de Holguín in 1724 and kept in his room at the Casa Nacional de Moneda. Saint Matthew bears the note that the painter made it in Potosí that year.",
+        "openingHours": "Monday to Friday 8:30 to 16:30; Saturday and Sunday 9:00 to 13:00"
       },
       "de": {
-        "title": "Franziskanisches Kirchenmuseum",
-        "location": "Potosí, Bolivien",
-        "description": "Museum im ältesten Konvent Boliviens, gegründet 1547. Es zeigt kirchliche Kunst aus der Vizekönigszeit, darunter Skulpturen, Gemälde und religiöse Objekte.",
-        "openingHours": "Montag bis Samstag: 09:00 - 16:00"
+        "title": "Der heilige Matthäus und die vier Evangelisten",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "description": "Serie, die Melchor Pérez de Holguín 1724 malte und die in seinem Saal in der Casa Nacional de Moneda bewahrt wird. Auf dem heiligen Matthäus steht, dass der Maler ihn in diesem Jahr in Potosí schuf.",
+        "openingHours": "Montag bis Freitag 8:30 bis 16:30; Samstag und Sonntag 9:00 bis 13:00"
       }
     },
-    "Museo Mirador Nuestra Señora de la Merced": {
+    "San Francisco de Asís": {
       "en": {
-        "title": "Mirador Museum of Our Lady of Mercy",
-        "location": "Potosí, Bolivia",
-        "description": "One of the buildings that took the longest to complete, between 1555 and 1687. It was founded by the Mercedarian fathers, who venerate the Virgin of Mercy, ornamented with a chased silver arch. The church is Renaissance in style and was altered several times. The plan is a Latin cross, with a central body, a transept and a triumphal arch. The stone portal was carved in 1687. It has two storeys. The columns beside the entrance rest on bases whose panels carry floral motifs set in coffers.",
-        "openingHours": "Monday to Sunday: 09:00 to 12:00 and 14:30 to 18:00"
+        "title": "Saint Francis of Assisi",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "description": "Canvas signed in 1694 by Melchor Pérez de Holguín. In the Casa Nacional de Moneda it is paired with Saint Peter of Alcántara, from the painter's early period of monks and ascetics.",
+        "openingHours": "Monday to Friday 8:30 to 16:30; Saturday and Sunday 9:00 to 13:00"
       },
       "de": {
-        "title": "Museum und Aussichtspunkt Nuestra Señora de la Merced",
-        "location": "Potosí, Bolivien",
-        "description": "Einer der Bauten, die am längsten dauerten, zwischen 1555 und 1687. Gegründet von den Mercedariern, die die Jungfrau der Barmherzigkeit verehren. Sie ist mit einem getriebenen Silberbogen geschmückt. Die Kirche ist im Renaissancestil und wurde mehrfach verändert. Der Grundriss ist ein lateinisches Kreuz mit Mittelraum, Querschiff und Triumphbogen. Das steinerne Portal wurde 1687 gearbeitet und hat zwei Geschosse. Die Säulen am Eingang stehen auf Sockeln mit floralen Motiven in Kassetten.",
-        "openingHours": "Montag bis Sonntag: 09:00 bis 12:00 und 14:30 bis 18:00"
+        "title": "Der heilige Franziskus von Assisi",
+        "location": "Casa Nacional de Moneda, Potosí",
+        "description": "Leinwand, 1694 von Melchor Pérez de Holguín signiert. In der Casa Nacional de Moneda bildet sie ein Paar mit dem heiligen Petrus von Alcántara, aus der frühen Phase der Mönche und Asketen.",
+        "openingHours": "Montag bis Freitag 8:30 bis 16:30; Samstag und Sonntag 9:00 bis 13:00"
       }
     },
     "Museo La Carroza": {

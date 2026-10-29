@@ -117,19 +117,22 @@ void main() {
     );
 
     final encoded = jsonEncode(body);
-    expect(body['temperature'], 0.6);
+    expect(body['temperature'], 0.7);
     expect(body['max_tokens'], 450);
     expect(body['thinking'], {'type': 'disabled'});
     final messages = body['messages'] as List;
     expect(messages.first['role'], 'system');
     final dialogue = messages.where((message) => message['role'] != 'system').toList();
-    expect(dialogue, hasLength(7));
-    expect(dialogue.first['content'], 'respuesta 4');
+    expect(dialogue, hasLength(4));
+    expect(dialogue.first['content'], 'respuesta 7');
     expect(dialogue.last['content'], '¿quién fundó este lugar?');
     final system = messages.first['content'] as String;
     expect(system, contains('Potosí Memoriam'));
-    expect(system, contains('El usuario está frente a la exhibición: Convento de San Francisco'));
-    expect(system, contains('No está en el lugar real'));
+    expect(system, contains('una exhibición de fotos e imágenes'));
+    expect(system, contains('Exhibición actual: Convento de San Francisco'));
+    expect(system.split('Exhibición actual:').first, isNot(contains('Convento de San Francisco')));
+    expect(system.split('Resumen de la visita:').first, isNot(contains('Entierros bajo el altar')));
+    expect(system, contains('no está en el lugar real'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, contains('Entierros bajo el altar mayor'));
@@ -139,7 +142,9 @@ void main() {
     expect(system, contains('2 o 3 frases como máximo'));
     expect(system, contains('6 a 8 frases'));
     expect(system, contains('con cautela si no estás seguro'));
-    expect(system, contains('Responde en el idioma "es"'));
+    expect(system, contains('en el idioma en que te habla el visitante'));
+    expect(system, contains('Resumen de la visita:'));
+    expect(system, contains('no lo inventes'));
     expect(system, isNot(contains('Narrador de museo')));
     expect(encoded, isNot(contains('respuesta 0')));
     expect(encoded, isNot(contains('yearFounded')));
@@ -178,13 +183,67 @@ void main() {
     expect(spokenSystem, contains('Narrador de museo'));
     expect(spokenSystem, contains('Exhibición actual'));
     expect(spokenSystem, contains('2 o 3 frases como máximo'));
+    expect(spokenSystem.startsWith(quietSystem), isTrue);
     expect(spoken['model'], 'deepseek-flash');
-    expect(spoken['max_tokens'], 450);
+    expect(spoken['max_tokens'], 300);
+    expect(quiet['max_tokens'], 450);
+    expect(quiet['temperature'], 0.7);
     expect(spoken['thinking'], {'type': 'disabled'});
     expect(spoken.containsKey('stream'), isFalse);
     final dialogue = (spoken['messages'] as List).where((message) => message['role'] != 'system');
     expect(dialogue, hasLength(4));
     expect(DeepSeekSse.delta('data: {"choices":[{"delta":{"content":"Hola. "}}]}'), 'Hola. ');
     expect(DeepSeekSse.delta('data: [DONE]'), isNull);
+
+    final other = service.buildBody(
+      question: '¿Cuándo se fundó?',
+      languageCode: 'es',
+      snippets: const [],
+      placeName: 'Criptas de La Merced',
+    );
+    final otherSystem = (other['messages'] as List).first['content'] as String;
+    expect(
+      otherSystem.split('Resumen de la visita:').first,
+      quietSystem.split('Resumen de la visita:').first,
+    );
+    expect(DeepSeekLog.credit(402, ''), isTrue);
+    expect(
+      DeepSeekLog.credit(400, '{"error":{"code":"insufficient_quota"}}'),
+      isTrue,
+    );
+    expect(DeepSeekLog.credit(401, 'Unauthorized'), isFalse);
+    expect(
+      DeepSeekLog.safe('Bearer sk-testsecret boom', 'sk-testsecret'),
+      isNot(contains('sk-testsecret')),
+    );
+  });
+
+  test('portuguese is named after the cached prefix', () {
+    final service = RemoteGuideAnswerService(
+      apiKey: 'test',
+      fallback: LocalGuideAnswerService(),
+    );
+    String system(String language, {bool spoken = false}) {
+      final body = service.buildBody(
+        question: 'quando',
+        languageCode: language,
+        snippets: const [],
+        placeName: 'Criptas',
+        spoken: spoken,
+      );
+      return (body['messages'] as List).first['content'] as String;
+    }
+
+    final spanish = system('es');
+    final portuguese = system('pt');
+    expect(
+      portuguese.split('Resumen de la visita:').first,
+      spanish.split('Resumen de la visita:').first,
+    );
+    expect(portuguese, contains('Idioma de esta respuesta: pt'));
+    expect(spanish, contains('Idioma de esta respuesta: es'));
+    expect(system('de'), contains('Idioma de esta respuesta: de'));
+    expect(system('pt', spoken: true).startsWith(portuguese), isTrue);
+    expect(RemoteGuideAnswerService.answerLanguage('pt_BR'), 'pt');
   });
 }

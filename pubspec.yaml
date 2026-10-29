@@ -63,8 +63,10 @@ dependencies:
   cloud_firestore: ^5.0.0
   intl: ^0.20.1
   just_audio: ^0.10.6
+  audio_session: 0.2.4
   speech_to_text: ^7.4.0
   flutter_tts: ^4.2.5
+  flutter_secure_storage: 9.2.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

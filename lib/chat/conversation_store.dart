@@ -6,6 +6,8 @@ abstract class ConversationStore {
   List<ChatMessage> get messages;
 
   void add(ChatMessage message);
+
+  void clear();
 }
 
 class MemoryConversationStore implements ConversationStore {
@@ -17,5 +19,10 @@ class MemoryConversationStore implements ConversationStore {
   @override
   void add(ChatMessage message) {
     _messages.add(message);
+  }
+
+  @override
+  void clear() {
+    _messages.clear();
   }
 }

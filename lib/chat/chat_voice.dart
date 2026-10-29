@@ -1,11 +1,10 @@
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'speech_route.dart';
+
 /// Silencio que cierra la escucha del chat de texto.
 const chatSilencePause = Duration(seconds: 3);
-
-/// Silencio de la pantalla Hablar. En Android el reconocedor lo aproxima.
-const voiceSilencePause = Duration(milliseconds: 1200);
 
 /// Si nadie habla, la pantalla Hablar deja de escuchar.
 const voiceIdlePause = Duration(seconds: 20);
@@ -24,12 +23,26 @@ SpeechListenOptions chatListenOptions(String localeId) {
   );
 }
 
-SpeechListenOptions voiceListenOptions(String localeId) {
+/// Mantener el micrófono no espera el silencio de 3 segundos: se corta al soltar.
+SpeechListenOptions chatHoldListenOptions(String localeId) {
   return SpeechListenOptions(
     partialResults: true,
     cancelOnError: true,
     listenMode: ListenMode.dictation,
-    pauseFor: voiceSilencePause,
+    pauseFor: chatListenLimit,
+    listenFor: chatListenLimit,
+    localeId: localeId,
+  );
+}
+
+/// Hablar no deja que el reconocedor corte en el primer silencio.
+/// La pantalla decide cuándo la frase terminó.
+SpeechListenOptions voiceListenOptions(String localeId) {
+  return SpeechListenOptions(
+    partialResults: true,
+    cancelOnError: false,
+    listenMode: ListenMode.dictation,
+    pauseFor: chatListenLimit,
     listenFor: chatListenLimit,
     localeId: localeId,
   );
@@ -110,8 +123,74 @@ class DeviceChatEar implements ChatEar {
   Future<void> cancel() => _speech.cancel();
 }
 
+/// Motor de lectura. Las pruebas sustituyen el de flutter_tts.
+abstract class TtsEngine {
+  Future<void> setLanguage(String language);
+
+  Future<void> setSpeechRate(double rate);
+
+  void bindFinish(void Function() finish);
+
+  Future<void> speak(String text);
+
+  Future<void> stop();
+}
+
+class _FlutterTtsEngine implements TtsEngine {
+  _FlutterTtsEngine(this._voice);
+
+  final FlutterTts _voice;
+  bool _bound = false;
+
+  @override
+  Future<void> setLanguage(String language) async {
+    await _voice.setLanguage(language);
+  }
+
+  @override
+  Future<void> setSpeechRate(double rate) async {
+    await _voice.setSpeechRate(rate);
+  }
+
+  @override
+  void bindFinish(void Function() finish) {
+    if (_bound) return;
+    _bound = true;
+    _voice.setCompletionHandler(finish);
+    _voice.setCancelHandler(finish);
+  }
+
+  @override
+  Future<void> speak(String text) async {
+    await _voice.speak(text);
+  }
+
+  @override
+  Future<void> stop() async {
+    await _voice.stop();
+  }
+}
+
 class DeviceChatSpeaker implements ChatSpeaker {
-  FlutterTts? _voice;
+  DeviceChatSpeaker({TtsEngine? engine, Future<void> Function()? prepareRoute})
+      : _engine = engine,
+        _prepareRoute = prepareRoute;
+
+  final TtsEngine? _engine;
+  final Future<void> Function()? _prepareRoute;
+  TtsEngine? _live;
+  bool _bound = false;
+  bool _arming = false;
+  void Function()? _onDone;
+
+  TtsEngine get _tts => _live ??= _engine ?? _FlutterTtsEngine(FlutterTts());
+
+  void _finish() {
+    if (_arming) return;
+    final done = _onDone;
+    _onDone = null;
+    done?.call();
+  }
 
   @override
   Future<void> speak({
@@ -119,24 +198,58 @@ class DeviceChatSpeaker implements ChatSpeaker {
     required String languageCode,
     required void Function() onDone,
   }) async {
-    final voice = _voice ??= FlutterTts();
-    await voice.setLanguage(_ttsLanguage(languageCode));
-    await voice.setSpeechRate(0.45);
-    voice.setCompletionHandler(onDone);
-    voice.setCancelHandler(onDone);
-    await voice.speak(text);
+    try {
+      await (_prepareRoute ?? SpeechRoute.prepare)();
+    } catch (_) {}
+    final engine = _tts;
+    await engine.setLanguage(ttsLanguage(languageCode));
+    await engine.setSpeechRate(0.45);
+    if (!_bound) {
+      engine.bindFinish(_finish);
+      _bound = true;
+    }
+    final previous = _onDone;
+    _onDone = null;
+    _arming = true;
+    try {
+      if (previous != null) await engine.stop();
+    } catch (_) {
+      // La lectura anterior ya terminó.
+    } finally {
+      _arming = false;
+    }
+    previous?.call();
+    _onDone = onDone;
+    _arming = true;
+    try {
+      await engine.speak(text);
+    } finally {
+      _arming = false;
+    }
   }
 
   @override
   Future<void> stop() async {
-    await _voice?.stop();
+    final previous = _onDone;
+    _onDone = null;
+    _arming = true;
+    try {
+      await _live?.stop();
+    } catch (_) {
+      // El motor ya estaba parado.
+    } finally {
+      _arming = false;
+    }
+    previous?.call();
   }
 }
 
-String _ttsLanguage(String languageCode) {
+String ttsLanguage(String languageCode) {
   switch (languageCode) {
     case 'en':
       return 'en-US';
+    case 'pt':
+      return 'pt-BR';
     case 'de':
       return 'de-DE';
     default:

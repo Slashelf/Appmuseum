@@ -56,3 +56,5 @@ app.*.map.json
 /${CODEAGENTSWARM_DB_PATH}
 /${CODEAGENTSWARM_DB_PATH}-shm
 /${CODEAGENTSWARM_DB_PATH}-wal
+# Local secrets written by `elevenlabs onboard`
+/.env.local

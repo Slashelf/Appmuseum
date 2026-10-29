@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../chat/chat_controller.dart';
 import '../chat/chat_voice.dart';
 import '../chat/guide_narrator.dart';
+import '../chat/voice_turn.dart';
 import '../core/locale/locale_controller.dart';
 import '../core/theme/app_theme.dart';
 import 'app_localizations.dart';
@@ -61,17 +62,20 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   int _pendingClips = 0;
   int _playGen = 0;
   double _level = 0;
-  String _heard = '';
   String _userLine = '';
   String _guideLine = '';
+  bool _phoneVoice = false;
+  final VoiceTurn _turn = VoiceTurn();
+  int _emptyStops = 0;
+  int _listenGen = 0;
 
   ChatEar get _ear => widget.ear ?? (_ownedEar ??= DeviceChatEar());
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat(reverse: true);
+    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
+      ..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
@@ -80,7 +84,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _silence?.cancel();
     _idle?.cancel();
     _pulse.dispose();
-    _narrator?.stop();
+    final narrator = _narrator;
+    _narrator = null;
+    if (narrator != null) unawaited(narrator.dispose());
     if (_ownedEar != null) {
       _ear.cancel();
     }
@@ -88,7 +94,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   GuideNarrator _voice(ChatSpeaker speaker) {
-    return _narrator ??= GuideNarrator(fallback: speaker);
+    final narrator = _narrator ??= GuideNarrator(fallback: speaker);
+    narrator.onPhoneVoice = (_) {
+      if (!mounted) return;
+      setState(() => _phoneVoice = true);
+    };
+    narrator.onRemoteVoice = () {
+      if (!mounted || !_phoneVoice) return;
+      setState(() => _phoneVoice = false);
+    };
+    return narrator;
   }
 
   Future<bool> _reach() {
@@ -112,29 +127,38 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await _beginListen();
   }
 
-  Future<void> _beginListen() async {
-    if (!mounted || _muted || _offline || _starting) return;
-    if (_phase == VoicePhase.listening && _heard.isEmpty && _idle != null && _pendingClips == 0) {
+  Future<void> _beginListen({bool keepWords = false}) async {
+    if (!mounted || _muted || _offline) return;
+    if (!keepWords &&
+        _phase == VoicePhase.listening &&
+        _turn.isEmpty &&
+        _idle != null &&
+        _pendingClips == 0 &&
+        !_starting) {
       return;
     }
+    final generation = ++_listenGen;
     _starting = true;
-    _silence?.cancel();
-    _heard = '';
-    _level = 0;
+    if (!keepWords) {
+      _silence?.cancel();
+      _turn.reset();
+      _level = 0;
+      _emptyStops = 0;
+    }
     _ignoreEar = true;
     try {
       await _ear.stop();
     } catch (_) {}
     _ignoreEar = false;
-    if (!mounted || _muted) {
-      _starting = false;
+    if (!mounted || _muted || generation != _listenGen) {
+      if (generation == _listenGen) _starting = false;
       return;
     }
     setState(() => _phase = VoicePhase.listening);
     final language = context.read<LocaleController>().locale.languageCode;
     final ready = await _ear.prepare(onStatus: _onStatus, onError: _onEarError);
-    if (!mounted || _muted) {
-      _starting = false;
+    if (!mounted || _muted || generation != _listenGen) {
+      if (generation == _listenGen) _starting = false;
       return;
     }
     if (!ready) {
@@ -145,6 +169,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       });
       return;
     }
+    _starting = false;
     try {
       await _ear.listen(
         onWords: _onWords,
@@ -153,20 +178,23 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         options: voiceListenOptions(_localeId(language)),
       );
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _listenGen) {
         setState(() => _phase = VoicePhase.paused);
       }
+      return;
     }
-    _starting = false;
-    _armIdle();
+    if (generation != _listenGen) return;
+    if (!keepWords || _turn.isEmpty) _armIdle();
   }
 
   void _armIdle() {
     _idle?.cancel();
     _idle = Timer(voiceIdlePause, () {
-      if (!mounted || _phase != VoicePhase.listening || _heard.trim().isNotEmpty) return;
+      if (!mounted || _phase != VoicePhase.listening || !_turn.isEmpty) return;
       _silence?.cancel();
+      _ignoreEar = true;
       _ear.stop();
+      _ignoreEar = false;
       setState(() => _phase = VoicePhase.paused);
     });
   }
@@ -175,11 +203,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (!mounted || _phase != VoicePhase.listening || _muted) return;
     if (words.trim().isEmpty) return;
     _idle?.cancel();
-    _heard = words;
-    setState(() => _userLine = words);
+    _emptyStops = 0;
+    _turn.hear(words);
+    setState(() => _userLine = _turn.text);
     _silence?.cancel();
-    _silence = Timer(voiceSilencePause, () {
-      final text = _heard.trim();
+    _silence = Timer(VoiceTurn.endpoint, () {
+      final text = _turn.text.trim();
       if (text.isEmpty || _phase != VoicePhase.listening) return;
       _sendTurn(text);
     });
@@ -191,38 +220,59 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   void _onStatus(String status) {
-    if (!mounted || _muted || _ignoreEar) return;
+    if (!mounted || _muted || _ignoreEar || _starting) return;
     if (status != 'done' && status != 'notListening') return;
     if (_phase != VoicePhase.listening) return;
-    final text = _heard.trim();
-    if (text.isEmpty) return;
-    _silence?.cancel();
-    _sendTurn(text);
+    _turn.engineStopped();
+    if (_turn.isEmpty) {
+      _emptyStops += 1;
+      if (_emptyStops >= VoiceTurn.retryLimit) {
+        _silence?.cancel();
+        _idle?.cancel();
+        setState(() => _phase = VoicePhase.paused);
+        return;
+      }
+    } else {
+      _emptyStops = 0;
+      setState(() => _userLine = _turn.text);
+    }
+    _beginListen(keepWords: true);
   }
 
   void _onEarError() {
-    if (!mounted) return;
+    if (!mounted || _muted || _ignoreEar || _starting) return;
+    if (_phase != VoicePhase.listening) return;
+    if (_turn.noteError()) {
+      _beginListen(keepWords: true);
+      return;
+    }
     _silence?.cancel();
     _idle?.cancel();
+    _listenGen++;
     setState(() => _phase = VoicePhase.paused);
+    _ear.stop();
   }
 
   Future<void> _sendTurn(String text) async {
     if (_replyOpen || _phase == VoicePhase.thinking || _phase == VoicePhase.speaking) return;
     _silence?.cancel();
     _idle?.cancel();
-    _heard = '';
+    _turn.reset();
+    _emptyStops = 0;
     _replyOpen = true;
     final generation = ++_playGen;
+    _listenGen++;
     setState(() {
       _phase = VoicePhase.thinking;
       _userLine = text;
       _guideLine = '';
       _offline = false;
     });
+    _ignoreEar = true;
     try {
       await _ear.stop();
     } catch (_) {}
+    _ignoreEar = false;
     if (!mounted || generation != _playGen) {
       _replyOpen = false;
       return;
@@ -242,7 +292,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     }
     final chat = context.read<ChatController>();
     final language = context.read<LocaleController>().locale.languageCode;
+    final speech = chat.replyLanguage(language);
     final t = AppLocalizations.of(context);
+    if (widget.onSpeak == null) {
+      final speaker = widget.speaker ?? DeviceChatSpeaker();
+      _voice(speaker).beginReply();
+    }
     await chat.submit(
       text,
       languageCode: language,
@@ -258,7 +313,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _phase = VoicePhase.speaking;
           _guideLine = _guideLine.isEmpty ? sentence : '$_guideLine $sentence';
         });
-        _play(sentence, language, generation);
+        _play(sentence, speech, generation);
       },
     );
     _replyOpen = false;
@@ -278,16 +333,23 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       if (widget.onSpeak != null) {
         await widget.onSpeak!(sentence, language);
       } else {
+        final chat = context.read<ChatController>();
+        await chat.ensureNarratorVoice();
+        if (!mounted || generation != _playGen) return;
+        if (chat.elevenKey.trim().isNotEmpty && chat.elevenVoiceId.trim().isEmpty) {
+          setState(() => _phoneVoice = true);
+        }
         final speaker = widget.speaker ?? DeviceChatSpeaker();
-        _voice(speaker).onIdle = () {
+        final narrator = _voice(speaker);
+        narrator.onIdle = () {
           _pendingClips = 0;
           _afterSpeech(generation);
         };
-        _voice(speaker).enqueue(
+        narrator.enqueue(
           sentence,
           languageCode: language,
-          apiKey: () => context.read<ChatController>().elevenKey,
-          voiceId: () => context.read<ChatController>().elevenVoiceId,
+          apiKey: () => chat.elevenKey,
+          voiceId: () => chat.elevenVoiceId,
         );
         return;
       }
@@ -365,14 +427,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   String _localeId(String language) {
-    switch (language) {
-      case 'en':
-        return 'en_US';
-      case 'de':
-        return 'de_DE';
-      default:
-        return 'es_ES';
-    }
+    return context.read<ChatController>().earLocale(language);
   }
 
   String _statusLabel(AppLocalizations t) {
@@ -424,6 +479,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                     color: GuidePalette.accent,
                   ),
                 ),
+              if (_phoneVoice)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    t.get('phoneVoiceNotice'),
+                    key: const Key('voice-phone-notice'),
+                    textAlign: TextAlign.center,
+                    style: AppFonts.poppins(fontSize: 12, color: GuidePalette.muted),
+                  ),
+                ),
               if (_offline)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -449,11 +514,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                 child: AnimatedBuilder(
                   animation: _pulse,
                   builder: (context, child) {
-                    final pulse = _phase == VoicePhase.listening ? _level : _pulse.value;
                     return CustomPaint(
-                      painter: _SpherePainter(
-                        pulse: pulse,
-                        speaking: _phase == VoicePhase.speaking || _phase == VoicePhase.thinking,
+                      painter: MuseumOrbPainter(
+                        phase: _phase,
+                        pulse: _pulse.value,
+                        level: _level,
                       ),
                       child: const SizedBox(width: 220, height: 220),
                     );
@@ -509,39 +574,121 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 }
 
-class _SpherePainter extends CustomPainter {
-  final double pulse;
-  final bool speaking;
+/// Orbe de la pantalla Hablar. El azul vive solo aquí: la paleta del museo no tiene azul.
+class MuseumOrbPainter extends CustomPainter {
+  static const Color night = Color(0xFF14283F);
+  static const Color blue = Color(0xFF3E6FA3);
 
-  const _SpherePainter({required this.pulse, required this.speaking});
+  final VoicePhase phase;
+  final double pulse;
+  final double level;
+
+  const MuseumOrbPainter({
+    required this.phase,
+    required this.pulse,
+    required this.level,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width * (0.28 + pulse.clamp(0.0, 1.0) * 0.08);
-    final glow = Paint()
-      ..color = GuidePalette.accent.withValues(alpha: speaking ? 0.28 : 0.16)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
-    canvas.drawCircle(center, radius + 16, glow);
-    final fill = Paint()..color = GuidePalette.accent;
-    canvas.drawCircle(center, radius, fill);
-    final highlight = Paint()..color = const Color(0x66FFF8E8);
+    final turn = pulse.clamp(0.0, 1.0);
+    final volume = level.clamp(0.0, 1.0);
+    final base = size.width * 0.26;
+
+    canvas.drawCircle(
+      center,
+      size.width * 0.42,
+      Paint()..color = night.withValues(alpha: 0.92),
+    );
+
+    if (phase == VoicePhase.thinking) {
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(turn * math.pi * 2);
+      canvas.translate(-center.dx, -center.dy);
+      final glow = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round
+        ..color = GuidePalette.accent.withValues(alpha: 0.55)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: base + 22),
+        -0.4,
+        2.1,
+        false,
+        glow,
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: base + 34),
+        2.2,
+        1.3,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round
+          ..color = blue.withValues(alpha: 0.9),
+      );
+      canvas.restore();
+    }
+
+    if (phase == VoicePhase.speaking) {
+      for (var i = 0; i < 3; i++) {
+        final wave = (turn * 2 + i / 3) % 1.0;
+        canvas.drawCircle(
+          center,
+          base + 14 + wave * 48,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.2
+            ..color = (i.isEven ? GuidePalette.accent : GuidePalette.ink)
+                .withValues(alpha: (1 - wave) * 0.62),
+        );
+      }
+    }
+
+    final listening = phase == VoicePhase.listening;
+    final radius = base * (listening ? 1 + volume * 0.34 : 1 + math.sin(turn * math.pi * 2) * 0.03);
+    final outline = Path();
+    const steps = 56;
+    for (var i = 0; i <= steps; i++) {
+      final angle = (i / steps) * math.pi * 2;
+      final wobble = listening ? 1 + volume * 0.09 * math.sin(angle * 5 + volume * 6) : 1.0;
+      final point = Offset(
+        center.dx + math.cos(angle) * radius * wobble,
+        center.dy + math.sin(angle) * radius * wobble,
+      );
+      if (i == 0) {
+        outline.moveTo(point.dx, point.dy);
+      } else {
+        outline.lineTo(point.dx, point.dy);
+      }
+    }
+    outline.close();
+    canvas.drawPath(
+      outline,
+      Paint()
+        ..shader = RadialGradient(
+          colors: const [
+            Color(0xFFF3E6C4),
+            GuidePalette.accent,
+            blue,
+          ],
+          stops: const [0.0, 0.46, 1.0],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
     canvas.drawCircle(
       Offset(center.dx - radius * 0.28, center.dy - radius * 0.32),
-      radius * 0.22,
-      highlight,
+      radius * 0.16,
+      Paint()..color = GuidePalette.ink.withValues(alpha: 0.38),
     );
-    if (speaking) {
-      final ring = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = GuidePalette.ink.withValues(alpha: 0.35);
-      canvas.drawCircle(center, radius + 10 + math.sin(pulse * math.pi) * 6, ring);
-    }
   }
 
   @override
-  bool shouldRepaint(covariant _SpherePainter oldDelegate) {
-    return oldDelegate.pulse != pulse || oldDelegate.speaking != speaking;
+  bool shouldRepaint(covariant MuseumOrbPainter oldDelegate) {
+    return oldDelegate.phase != phase || oldDelegate.pulse != pulse || oldDelegate.level != level;
   }
 }

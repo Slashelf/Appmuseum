@@ -2,21 +2,32 @@
 class BeaconConfig {
   static const String uuid = 'E2C56DB5-DFFB-48D2-B060-D0F5A71096E0';
 
-  /// Umbral de entrada. Apunta a cerca de medio metro.
-  /// Unos 6 dB más estricto que el ajuste anterior de un metro.
-  /// El RSSI no mide metros: hay que calibrarlo caminando.
-  static const int rssiEnter = -56;
+  /// Señal de la zona: -40 dBm o más fuerte. El RSSI no mide metros.
+  static const int rssiNear = -40;
 
-  /// Por debajo de este valor, y solo si se mantiene, el lugar puede volver a abrirse.
+  /// Una lectura de -40 dBm, o más fuerte, abre el lugar.
+  static const int rssiEnter = -40;
+
+  /// Sale si la señal se queda más floja que esto. Un bajón breve no cuenta.
   static const int rssiExit = -80;
 
   static const Duration signalGrace = Duration(seconds: 8);
 
-  /// Una lectura cercana abre el lugar. No se acumulan anuncios.
+  /// Una lectura dentro de la zona abre. No hace falta una segunda.
   static const int confirmReadings = 1;
 
-  static const Duration confirmWindow = Duration(seconds: 6);
+  /// La segunda lectura puede llegar más floja, todavía dentro del radio exterior.
+  static const Duration confirmWindow = Duration(seconds: 12);
 
   /// Otro beacon puede abrir en cuanto su señal llega al umbral.
   static const Duration openCooldown = Duration.zero;
+
+  /// Promedio de las últimas lecturas antes de comparar la señal.
+  static const int smoothCount = 4;
+
+  /// La exhibición nueva tiene que seguir más cerca este tiempo.
+  static const Duration switchHold = Duration(seconds: 3);
+
+  /// Sin señal de la exhibición actual, se deja de mostrar.
+  static const Duration signalLost = Duration(seconds: 15);
 }

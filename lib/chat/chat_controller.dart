@@ -8,11 +8,15 @@ import '../models/object_model.dart';
 import 'chat_faq.dart';
 import 'chat_message.dart';
 import 'conversation_store.dart';
+import 'connection_check.dart';
 import 'guide_answer_service.dart';
+import 'guide_secrets.dart';
 import 'knowledge_source.dart';
 import 'local_exhibition_answers.dart';
 import 'remote_guide_answer_service.dart';
+import 'spanish_narrator.dart';
 import 'visit_context.dart';
+import 'visit_memory.dart';
 
 enum ChatAnswerMode { local, deepseek }
 
@@ -23,6 +27,7 @@ class ChatController extends ChangeNotifier {
   static const keyStorageKey = 'deepseek_api_key';
   static const elevenKeyStorageKey = 'elevenlabs_api_key';
   static const elevenVoiceStorageKey = 'elevenlabs_voice_id';
+  static const micLanguageStorageKey = 'chat_mic_language';
 
   final ConversationStore store;
   final KnowledgeSource knowledge;
@@ -31,12 +36,19 @@ class ChatController extends ChangeNotifier {
   final VisitContext visit;
   final String compiledKey;
   final String compiledElevenKey;
+  final GuideSecretStore secrets;
+  final ConnectionChecker connections;
+  final NarratorVoiceSource? voices;
 
   ChatAnswerMode _mode = ChatAnswerMode.local;
   String runtimeKey = '';
   String elevenRuntimeKey = '';
   String elevenVoiceId = '';
+  String micLanguage = 'auto';
   bool tookOffline = false;
+  bool _restored = false;
+  Future<String>? _voiceLookup;
+  final VisitMemory _memory = VisitMemory();
 
   ChatController({
     required this.store,
@@ -46,8 +58,14 @@ class ChatController extends ChangeNotifier {
     this.remote,
     this.compiledKey = '',
     this.compiledElevenKey = '',
-  }) {
+    GuideSecretStore? secrets,
+    ConnectionChecker? connections,
+    this.voices,
+  })  : secrets = secrets ?? MemoryGuideSecretStore(),
+        connections = connections ?? HttpConnectionChecker() {
     visit.addListener(_onVisit);
+    final current = visit.place;
+    _memory.rememberPlace(current?.id, current?.name ?? '', store.messages);
     if (compiledKey.trim().isNotEmpty) {
       remote?.apiKey = compiledKey.trim();
     }
@@ -61,13 +79,64 @@ class ChatController extends ChangeNotifier {
 
   bool get hasCompiledElevenKey => compiledElevenKey.trim().isNotEmpty;
 
+  /// Clave de DeepSeek que se usa de verdad. La compilada gana.
+  String get deepSeekKey {
+    if (hasCompiledKey) return compiledKey.trim();
+    return runtimeKey.trim();
+  }
+
   /// Clave de ElevenLabs. No se escribe en registros.
   String get elevenKey {
     if (hasCompiledElevenKey) return compiledElevenKey.trim();
     return elevenRuntimeKey.trim();
   }
 
+  /// Copia las claves viejas de SharedPreferences y las borra de ahí.
+  Future<void> restoreSaved() async {
+    if (_restored) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedMode = prefs.getString(modeStorageKey);
+      if (savedMode == ChatAnswerMode.deepseek.name) {
+        _mode = ChatAnswerMode.deepseek;
+      } else if (savedMode == ChatAnswerMode.local.name) {
+        _mode = ChatAnswerMode.local;
+      }
+      final savedMic = prefs.getString(micLanguageStorageKey) ?? 'auto';
+      if (const {'auto', 'es', 'en', 'pt'}.contains(savedMic)) {
+        micLanguage = savedMic;
+      }
+      final deep = await _migrate(keyStorageKey);
+      final eleven = await _migrate(elevenKeyStorageKey);
+      final voice = await _migrate(elevenVoiceStorageKey);
+      if (deep.isNotEmpty) runtimeKey = deep;
+      if (eleven.isNotEmpty) elevenRuntimeKey = eleven;
+      if (voice.isNotEmpty) elevenVoiceId = voice;
+      if (!hasCompiledKey && runtimeKey.isNotEmpty) {
+        remote?.apiKey = runtimeKey;
+      }
+      _restored = true;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<String> _migrate(String key) async {
+    final current = (await secrets.read(key) ?? '').trim();
+    final prefs = await SharedPreferences.getInstance();
+    final old = (prefs.getString(key) ?? '').trim();
+    if (current.isEmpty && old.isNotEmpty) {
+      await secrets.write(key, old);
+    }
+    if (prefs.containsKey(key)) {
+      await prefs.remove(key);
+    }
+    if (current.isNotEmpty) return current;
+    return old;
+  }
+
   void _onVisit() {
+    final place = visit.place;
+    _memory.rememberPlace(place?.id, place?.name ?? '', store.messages);
     notifyListeners();
   }
 
@@ -82,51 +151,99 @@ class ChatController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void updateRuntimeKey(String value) {
+  void updateDeepSeekKey(String value) {
+    if (hasCompiledKey) return;
     runtimeKey = value.trim();
-    if (!hasCompiledKey) {
-      remote?.apiKey = runtimeKey;
-    }
-    _saveKey(runtimeKey);
+    remote?.apiKey = runtimeKey;
+    _saveSecret(keyStorageKey, runtimeKey);
   }
 
-  void updateElevenField(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      elevenRuntimeKey = '';
-      _savePref(elevenKeyStorageKey, '');
-      return;
-    }
-    if (trimmed.startsWith('sk')) {
-      elevenRuntimeKey = trimmed;
-      _savePref(elevenKeyStorageKey, trimmed);
-      return;
-    }
-    if (trimmed.length >= 15) {
-      elevenVoiceId = trimmed;
-      _savePref(elevenVoiceStorageKey, trimmed);
+  void updateElevenKey(String value) {
+    if (hasCompiledElevenKey) return;
+    elevenRuntimeKey = value.trim();
+    _voiceLookup = null;
+    _saveSecret(elevenKeyStorageKey, elevenRuntimeKey);
+  }
+
+  void updateVoiceId(String value) {
+    final next = value.trim();
+    if (next.isEmpty) _voiceLookup = null;
+    elevenVoiceId = next;
+    _saveSecret(elevenVoiceStorageKey, elevenVoiceId);
+  }
+
+  /// Idioma de la respuesta y de la voz. El micrófono manda; Automático sigue la interfaz.
+  String replyLanguage(String uiLanguage) {
+    switch (micLanguage) {
+      case 'es':
+      case 'en':
+      case 'pt':
+        return micLanguage;
+      default:
+        final code = uiLanguage.trim().toLowerCase();
+        if (code == 'en' || code == 'de' || code == 'es') return code;
+        return 'es';
     }
   }
 
-  Future<void> _saveKey(String value) async {
+  /// Locale del reconocedor: `es_ES`, `en_US`, `pt_BR` o `de_DE`.
+  String earLocale(String uiLanguage) {
+    switch (replyLanguage(uiLanguage)) {
+      case 'en':
+        return 'en_US';
+      case 'pt':
+        return 'pt_BR';
+      case 'de':
+        return 'de_DE';
+      default:
+        return 'es_ES';
+    }
+  }
+
+  /// Pide un narrador premade en español y lo guarda.
+  /// Un id guardado que ya no está en la cuenta se cambia por ese narrador.
+  /// Sin clave, sin listado o si la lista falla, queda vacío y habla el teléfono.
+  Future<String> ensureNarratorVoice() {
+    final pending = _voiceLookup;
+    if (pending != null) return pending;
+    final run = _resolveVoice();
+    _voiceLookup = run;
+    return run;
+  }
+
+  Future<String> _resolveVoice() async {
+    final source = voices;
+    final key = elevenKey.trim();
+    if (source == null || key.isEmpty) return elevenVoiceId.trim();
+    final picked = (await source.resolve(key, elevenVoiceId))?.trim() ?? '';
+    if (picked.isEmpty) return '';
+    if (elevenVoiceId.trim() == picked) return picked;
+    if (elevenKey.trim() != key) return elevenVoiceId.trim();
+    updateVoiceId(picked);
+    return picked;
+  }
+
+  Future<void> setMicLanguage(String value) async {
+    const allowed = {'auto', 'es', 'en', 'pt'};
+    final next = allowed.contains(value) ? value : 'auto';
+    if (micLanguage == next) return;
+    micLanguage = next;
+    notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (value.isEmpty) {
-        await prefs.remove(keyStorageKey);
-      } else {
-        await prefs.setString(keyStorageKey, value);
-      }
+      await prefs.setString(micLanguageStorageKey, next);
     } catch (_) {}
   }
 
-  Future<void> _savePref(String key, String value) async {
+  void clearConversation() {
+    store.clear();
+    _memory.forgetDialogue();
+    notifyListeners();
+  }
+
+  Future<void> _saveSecret(String key, String value) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (value.isEmpty) {
-        await prefs.remove(key);
-      } else {
-        await prefs.setString(key, value);
-      }
+      await secrets.write(key, value);
     } catch (_) {}
   }
 
@@ -153,7 +270,7 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
-    if (ChatFaq.isSpam(trimmed) || ChatFaq.isOffTopic(trimmed)) {
+    if (ChatFaq.isSpam(trimmed)) {
       store.add(ChatMessage.guide(ChatFaq.offTopicReply(languageCode)));
       notifyListeners();
       return;
@@ -193,37 +310,49 @@ class ChatController extends ChangeNotifier {
     required void Function(String sentence)? onSentence,
   }) async {
     if (remote == null) return ChatFaq.cannotDraft(languageCode);
+    if (remote!.apiKey.trim().isEmpty) return ChatFaq.missingKey(languageCode);
+    _memory.roll(store.messages, dialogueLimit);
+    final start = _memory.boundary.clamp(0, store.messages.length);
+    final history = store.messages.sublist(start);
+    final summary = _memory.text;
+    final placeName = _placeName(languageCode);
+    final replyCode = replyLanguage(languageCode);
     String? remoteReply;
     try {
       if (spoken) {
         remoteReply = await remote!.tryAskSpoken(
           question: question,
-          languageCode: languageCode,
+          languageCode: replyCode,
           snippets: snippets,
           noDataText: noDataText,
-          history: store.messages,
-          placeName: _placeName(languageCode),
+          history: history,
+          placeName: placeName,
+          summary: summary,
           dialogueLimit: dialogueLimit,
           onSentence: onSentence ?? (_) {},
         );
       } else {
         remoteReply = await remote!.tryAsk(
           question: question,
-          languageCode: languageCode,
+          languageCode: replyCode,
           snippets: snippets,
           noDataText: noDataText,
-          history: store.messages,
-          placeName: _placeName(languageCode),
+          history: history,
+          placeName: placeName,
+          summary: summary,
         );
       }
     } catch (error) {
+      debugPrint('DeepSeek: ${DeepSeekLog.safe('$error', remote!.apiKey)}');
+      if (error is DeepSeekException && error.credit) {
+        return ChatFaq.noCredit(languageCode);
+      }
       if (_isOffline(error)) tookOffline = true;
-      remoteReply = null;
+      return ChatFaq.couldNotConnect(languageCode);
     }
-    if (remoteReply != null && remoteReply.trim().isNotEmpty) {
-      return remoteReply.trim();
-    }
-    return ChatFaq.cannotDraft(languageCode);
+    if (remoteReply == null) return ChatFaq.missingKey(languageCode);
+    if (remoteReply.trim().isEmpty) return ChatFaq.couldNotConnect(languageCode);
+    return remoteReply.trim();
   }
 
   bool _isOffline(Object error) {

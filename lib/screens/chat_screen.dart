@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,6 +14,7 @@ import '../core/locale/locale_controller.dart';
 import '../core/theme/app_theme.dart';
 import 'app_localizations.dart';
 import 'beacon_scan_services.dart';
+import 'guide_settings_screen.dart';
 import 'voice_conversation_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -27,10 +31,9 @@ class _ChatScreenState extends State<ChatScreen> {
   static const micExplainedKey = 'chat_mic_explained';
   static const autoSendKey = 'chat_mic_auto_send';
   static const conversationKey = 'chat_voice_conversation';
+  static const _slideDistance = 80.0;
 
   final TextEditingController _input = TextEditingController();
-  final TextEditingController _key = TextEditingController();
-  final TextEditingController _eleven = TextEditingController();
   final ScrollController _scroll = ScrollController();
   ChatEar? _ownedEar;
   ChatSpeaker? _ownedSpeaker;
@@ -44,6 +47,18 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _thenListen = false;
   bool _followBottom = true;
   bool _dragging = false;
+  bool _localQuestionsOpen = true;
+  bool _phoneVoice = false;
+  bool _fingerDown = false;
+  bool _holding = false;
+  bool _locked = false;
+  bool _holdClosing = false;
+  bool _sawDraft = false;
+  int _holdGen = 0;
+  int _holdSeconds = 0;
+  Offset? _origin;
+  Offset _drag = Offset.zero;
+  Timer? _clock;
   double? _lastInset;
   double _level = 0;
   String _textBeforeMic = '';
@@ -58,6 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _input.addListener(_onDraft);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _prepareChat();
       _scrollToBottomNow();
@@ -92,25 +108,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     final chat = context.read<ChatController>();
     try {
+      await chat.restoreSaved();
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getString(ChatController.modeStorageKey) ==
-          ChatAnswerMode.deepseek.name) {
-        await chat.setMode(ChatAnswerMode.deepseek, persist: false);
-      }
-      final savedKey = prefs.getString(ChatController.keyStorageKey) ?? '';
-      if (savedKey.isNotEmpty && _key.text.isEmpty) {
-        _key.text = savedKey;
-        chat.updateRuntimeKey(savedKey);
-      }
-      if (!chat.hasCompiledElevenKey) {
-        final savedEleven = prefs.getString(ChatController.elevenKeyStorageKey) ?? '';
-        if (savedEleven.isNotEmpty && _eleven.text.isEmpty) {
-          _eleven.text = savedEleven;
-          chat.elevenRuntimeKey = savedEleven;
-        }
-      }
-      final savedVoice = prefs.getString(ChatController.elevenVoiceStorageKey) ?? '';
-      if (savedVoice.isNotEmpty) chat.elevenVoiceId = savedVoice;
       _autoSend = prefs.getBool(autoSendKey) ?? false;
       _conversation = prefs.getBool(conversationKey) ?? false;
       _micExplained = prefs.getBool(micExplainedKey) ?? false;
@@ -140,11 +139,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (wasListening) {
       _ear.cancel();
     }
+    _clock?.cancel();
+    _input.removeListener(_onDraft);
     _ownedSpeaker?.stop();
-    _narrator?.stop();
+    final narrator = _narrator;
+    _narrator = null;
+    if (narrator != null) unawaited(narrator.dispose());
     _input.dispose();
-    _key.dispose();
-    _eleven.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -160,7 +161,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_listening) {
       _ignoreFinish = true;
       _listening = false;
+      _holding = false;
+      _locked = false;
       _level = 0;
+      _stopClock();
       await _ear.stop();
     }
     if (!mounted) return;
@@ -169,6 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _heard = '';
     // A new line follows the bottom only when the visitor was already there.
     if (_followBottom) _revealBottom();
+    if (_conversation) _guideNarrator().beginReply();
     await chat.submit(
       text,
       languageCode: language,
@@ -177,12 +182,7 @@ class _ChatScreenState extends State<ChatScreen> {
       spoken: _conversation,
       onSentence: _conversation
           ? (sentence) {
-              _guideNarrator().enqueue(
-                sentence,
-                languageCode: language,
-                apiKey: () => chat.elevenKey,
-                voiceId: () => chat.elevenVoiceId,
-              );
+              unawaited(_speakRemote(sentence));
             }
           : null,
     );
@@ -208,18 +208,57 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted || !_conversation || _sending || _listening) return;
       _startListen();
     };
+    narrator.onPhoneVoice = (_) {
+      if (!mounted) return;
+      setState(() => _phoneVoice = true);
+    };
+    narrator.onRemoteVoice = () {
+      if (!mounted || !_phoneVoice) return;
+      setState(() => _phoneVoice = false);
+    };
     return narrator;
   }
 
-  String _localeId(String language) {
-    switch (language) {
-      case 'en':
-        return 'en_US';
-      case 'de':
-        return 'de_DE';
-      default:
-        return 'es_ES';
+  Future<void> _speakRemote(String sentence) async {
+    final chat = context.read<ChatController>();
+    await chat.ensureNarratorVoice();
+    if (!mounted) return;
+    if (chat.elevenKey.trim().isNotEmpty && chat.elevenVoiceId.trim().isEmpty) {
+      setState(() => _phoneVoice = true);
     }
+    final ui = context.read<LocaleController>().locale.languageCode;
+    _guideNarrator().enqueue(
+      sentence,
+      languageCode: chat.replyLanguage(ui),
+      apiKey: () => chat.elevenKey,
+      voiceId: () => chat.elevenVoiceId,
+    );
+  }
+
+  String _localeId(String language) {
+    return context.read<ChatController>().earLocale(language);
+  }
+
+  String get _clockLabel {
+    final minutes = _holdSeconds ~/ 60;
+    final seconds = (_holdSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  void _onDraft() {
+    if (!mounted || _listening || _holding) return;
+    final has = _input.text.trim().isNotEmpty;
+    if (has == _sawDraft) return;
+    _sawDraft = has;
+    setState(() {});
+  }
+
+  void _buzz() {
+    unawaited(() async {
+      try {
+        await HapticFeedback.selectionClick();
+      } catch (_) {}
+    }());
   }
 
   void _restoreMicText() {
@@ -269,19 +308,21 @@ class _ChatScreenState extends State<ChatScreen> {
     return answer == true;
   }
 
-  Future<void> _startListen() async {
+  Future<void> _startListen({bool hold = false}) async {
     if (_sending || _listening || _speakingIndex != null) return;
+    final gen = _holdGen;
     if (!_micExplained) {
       final agreed = await _explainMic();
       if (!agreed || !mounted) return;
       _micExplained = true;
       await _saveBool(micExplainedKey, true);
     }
-    if (!mounted) return;
+    if (!mounted || (hold && gen != _holdGen)) return;
     _textBeforeMic = _input.text;
     _heard = '';
     _ignoreFinish = false;
     final language = context.read<LocaleController>().locale.languageCode;
+    final localeId = _localeId(language);
     final ready = await _ear.prepare(
       onStatus: _onListenStatus,
       onError: _onEarError,
@@ -290,7 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _notice('micUnavailable');
       return;
     }
-    if (!mounted) return;
+    if (!mounted || (hold && gen != _holdGen)) return;
     setState(() {
       _listening = true;
       _level = 0;
@@ -299,7 +340,8 @@ class _ChatScreenState extends State<ChatScreen> {
       await _ear.listen(
         onWords: _onWords,
         onLevel: _onLevel,
-        localeId: _localeId(language),
+        localeId: localeId,
+        options: hold ? chatHoldListenOptions(localeId) : chatListenOptions(localeId),
       );
     } catch (_) {
       _listening = false;
@@ -307,22 +349,35 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() {});
       _notice('micUnavailable');
     }
+    if (hold && gen != _holdGen && _listening) {
+      await _cancelListen();
+    }
   }
 
-  Future<void> _finishListen() async {
-    if (!_listening) return;
-    try {
-      await _ear.stop();
-    } catch (_) {
-      _onFinished();
-    }
+  void _stopClock() {
+    _clock?.cancel();
+    _clock = null;
+    _holdSeconds = 0;
+  }
+
+  void _startClock() {
+    _stopClock();
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || (!_holding && !_locked)) return;
+      setState(() => _holdSeconds += 1);
+    });
   }
 
   Future<void> _cancelListen() async {
     _ignoreFinish = true;
     _listening = false;
+    _holding = false;
+    _locked = false;
+    _fingerDown = false;
     _level = 0;
     _heard = '';
+    _drag = Offset.zero;
+    _stopClock();
     _restoreMicText();
     if (mounted) setState(() {});
     try {
@@ -330,23 +385,115 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
-  Future<void> _toggleMic() async {
-    if (_sending || _speakingIndex != null) return;
-    if (_listening) {
-      await _finishListen();
+  void _micDown(PointerDownEvent event) {
+    if (_sending || _speakingIndex != null || _listening || _holding) return;
+    _fingerDown = true;
+    _origin = event.position;
+    _drag = Offset.zero;
+    unawaited(_openHold());
+  }
+
+  Future<void> _openHold() async {
+    if (!_micExplained) {
+      _fingerDown = false;
+      final agreed = await _explainMic();
+      if (!agreed || !mounted) return;
+      _micExplained = true;
+      await _saveBool(micExplainedKey, true);
       return;
     }
-    await _startListen();
+    await _armHold();
   }
 
-  Future<void> _beginHold() async {
-    if (_listening || _sending || _speakingIndex != null) return;
-    await _startListen();
+  Future<void> _armHold() async {
+    _holdGen += 1;
+    final gen = _holdGen;
+    _holding = true;
+    _locked = false;
+    _holdSeconds = 0;
+    _drag = Offset.zero;
+    if (mounted) setState(() {});
+    await _startListen(hold: true);
+    if (!mounted || gen != _holdGen) return;
+    if (!_listening) {
+      _holding = false;
+      if (mounted) setState(() {});
+      return;
+    }
+    _startClock();
+    _buzz();
+    if (!mounted || gen != _holdGen) return;
+    if (!_fingerDown && !_locked) {
+      await _endHold(cancel: _drag.dx <= -_slideDistance);
+      return;
+    }
+    if (mounted) setState(() {});
   }
 
-  Future<void> _endHold() async {
-    if (!_listening) return;
-    await _finishListen();
+  void _micMove(PointerMoveEvent event) {
+    if (!_fingerDown || _origin == null) return;
+    final delta = event.position - _origin!;
+    _drag = delta;
+    if (!_locked && delta.dy <= -_slideDistance && delta.dy.abs() > delta.dx.abs()) {
+      _locked = true;
+      if (mounted) setState(() {});
+      return;
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _micUp(PointerEvent event) {
+    final wasDown = _fingerDown;
+    _fingerDown = false;
+    if (_locked) {
+      _holding = false;
+      if (mounted) setState(() {});
+      return;
+    }
+    if (!wasDown || (!_holding && !_listening)) return;
+    unawaited(_endHold(cancel: _drag.dx <= -_slideDistance));
+  }
+
+  Future<void> _endHold({required bool cancel}) async {
+    if (_holdClosing) return;
+    _holdClosing = true;
+    _holdGen += 1;
+    _holding = false;
+    _locked = false;
+    _fingerDown = false;
+    _drag = Offset.zero;
+    _stopClock();
+    final text = _heard.trim();
+    final wasListening = _listening;
+    if (wasListening) {
+      _ignoreFinish = true;
+      _listening = false;
+      _level = 0;
+    }
+    if (mounted) setState(() {});
+    try {
+      if (cancel) {
+        if (wasListening) await _cancelListen();
+        return;
+      }
+      if (!wasListening) return;
+      try {
+        await _ear.stop();
+      } catch (_) {}
+      if (!mounted) return;
+      if (text.isEmpty) {
+        _restoreMicText();
+        setState(() {});
+        _notice('micNotHeard');
+        return;
+      }
+      _buzz();
+      _input.text = text;
+      await _send(text);
+    } finally {
+      _holdClosing = false;
+      if (mounted) setState(() {});
+    }
   }
 
   void _onWords(String words, bool isFinal) {
@@ -375,7 +522,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_listening) return;
     _ignoreFinish = true;
     _listening = false;
+    _holding = false;
+    _locked = false;
     _level = 0;
+    _stopClock();
     _restoreMicText();
     if (mounted) setState(() {});
     _notice('micUnavailable');
@@ -387,6 +537,10 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     if (!_listening) return;
+    if (_holding || _locked) {
+      unawaited(_endHold(cancel: false));
+      return;
+    }
     final text = _heard.trim();
     setState(() {
       _listening = false;
@@ -416,13 +570,17 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_listening) {
       _ignoreFinish = true;
       _listening = false;
+      _holding = false;
+      _locked = false;
       _level = 0;
+      _stopClock();
       await _ear.stop();
     }
     _thenListen = thenListen || _conversation;
     if (!mounted) return;
     setState(() => _speakingIndex = index);
-    final language = context.read<LocaleController>().locale.languageCode;
+    final ui = context.read<LocaleController>().locale.languageCode;
+    final language = context.read<ChatController>().replyLanguage(ui);
     try {
       await _speaker.speak(
         text: spoken,
@@ -441,37 +599,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _thenListen = false;
       if (mounted) setState(() => _speakingIndex = null);
     }
-  }
-
-  Widget _modeBar(AppLocalizations t, ChatController chat) {
-    if (chat.hasCompiledKey) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: TextField(
-        controller: _key,
-        obscureText: true,
-        autocorrect: false,
-        enableSuggestions: false,
-        style: AppFonts.poppins(fontSize: 14),
-        onChanged: chat.updateRuntimeKey,
-        decoration: InputDecoration(
-          hintText: t.get('chatKeyHint'),
-          hintStyle: AppFonts.poppins(fontSize: 13, color: GuidePalette.muted),
-          filled: true,
-          fillColor: GuidePalette.surface,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: GuidePalette.accent),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: GuidePalette.accent, width: 1.4),
-          ),
-        ),
-      ),
-    );
   }
 
   bool _nearBottom() {
@@ -593,25 +720,26 @@ class _ChatScreenState extends State<ChatScreen> {
             fontSize: 18,
           ),
         ),
+        actions: [
+          PopupMenuButton<String>(
+            key: const Key('chat-menu'),
+            tooltip: t.get('settingsTitle'),
+            color: GuidePalette.surface,
+            elevation: 6,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(GuidePalette.radiusCard),
+              side: const BorderSide(color: GuidePalette.accent),
+            ),
+            icon: const Icon(Icons.more_vert, color: GuidePalette.white),
+            onSelected: (value) => _onMenu(value, chat),
+            itemBuilder: (context) => _menuItems(t, chat),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          _modeSwitch(t, chat),
-          if (chat.mode == ChatAnswerMode.deepseek) _modeBar(t, chat),
           if (placeName != null && placeName.trim().isNotEmpty)
-            Container(
-              width: double.infinity,
-              color: GuidePalette.background,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-              child: Text(
-                t.get('chatHere').replaceAll('{name}', placeName),
-                style: AppFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: GuidePalette.accent,
-                ),
-              ),
-            ),
+            _exhibitionBar(t, chat, placeName),
           Expanded(
             child: Stack(
               children: [
@@ -699,25 +827,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           if (chat.mode == ChatAnswerMode.local)
             _localQuestions(t, chat, language)
-          else ...[
-            _voiceChoices(t, chat),
-            if (_conversation && !chat.hasCompiledElevenKey)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-                child: TextField(
-                  key: const Key('chat-eleven-key'),
-                  controller: _eleven,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  style: AppFonts.poppins(fontSize: 14),
-                  onChanged: chat.updateElevenField,
-                  decoration: InputDecoration(
-                    hintText: t.get('elevenKeyHint'),
-                    hintStyle: AppFonts.poppins(fontSize: 13, color: GuidePalette.muted),
-                  ),
-                ),
-              ),
+          else
             SafeArea(
             top: false,
             child: Padding(
@@ -725,38 +835,40 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _input,
-                      style: AppFonts.poppins(fontSize: 15),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(
-                        hintText: t.get('chatHint'),
-                        hintStyle: AppFonts.poppins(
-                          fontSize: 15,
-                          color: GuidePalette.muted,
-                        ),
-                        filled: true,
-                        fillColor: GuidePalette.surface,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(color: GuidePalette.accent),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: const BorderSide(
-                            color: GuidePalette.accent,
-                            width: 1.4,
+                    child: _holding || _locked
+                        ? _holdBar(t)
+                        : TextField(
+                            controller: _input,
+                            style: AppFonts.poppins(fontSize: 15),
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
+                            decoration: InputDecoration(
+                              hintText: t.get('chatHint'),
+                              hintStyle: AppFonts.poppins(
+                                fontSize: 15,
+                                color: GuidePalette.muted,
+                              ),
+                              filled: true,
+                              fillColor: GuidePalette.surface,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: const BorderSide(color: GuidePalette.accent),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: const BorderSide(
+                                  color: GuidePalette.accent,
+                                  width: 1.4,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
-                  if (_listening) ...[
+                  if (_listening && !_holding && !_locked) ...[
                     const SizedBox(width: 6),
                     _MicBars(level: _level),
                     IconButton(
@@ -766,96 +878,311 @@ class _ChatScreenState extends State<ChatScreen> {
                       icon: const Icon(Icons.close, color: GuidePalette.muted),
                     ),
                   ],
-                  GestureDetector(
-                    key: const Key('chat-mic'),
-                    onTap: _sending || _speakingIndex != null ? null : _toggleMic,
-                    onLongPressStart: _sending || _speakingIndex != null ? null : (_) => _beginHold(),
-                    onLongPressEnd: (_) => _endHold(),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(
-                        _listening ? Icons.mic : Icons.mic_none,
-                        color: _listening ? GuidePalette.accent : GuidePalette.muted,
+                  if (_sending)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: GuidePalette.accent,
+                        ),
+                      ),
+                    )
+                  else if (_locked)
+                    IconButton(
+                      key: const Key('chat-mic-send'),
+                      tooltip: t.get('chatSend'),
+                      onPressed: () => _endHold(cancel: false),
+                      icon: const Icon(Icons.send, color: GuidePalette.accent),
+                    )
+                  else if (_input.text.trim().isNotEmpty && !_listening && !_holding)
+                    IconButton(
+                      key: const Key('chat-send'),
+                      tooltip: t.get('chatSend'),
+                      onPressed: () => _send(),
+                      icon: const Icon(Icons.send, color: GuidePalette.accent),
+                    )
+                  else
+                    Listener(
+                      key: const Key('chat-mic'),
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: _micDown,
+                      onPointerMove: _micMove,
+                      onPointerUp: _micUp,
+                      onPointerCancel: _micUp,
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Icon(
+                          _listening ? Icons.mic : Icons.mic_none,
+                          color: _listening ? GuidePalette.accent : GuidePalette.muted,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: t.get('chatSend'),
-                    onPressed: _sending ? null : () => _send(),
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: GuidePalette.accent,
-                            ),
-                          )
-                        : const Icon(Icons.send, color: GuidePalette.accent),
-                  ),
                 ],
               ),
             ),
           ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _modeSwitch(AppLocalizations t, ChatController chat) {
-    final local = chat.mode == ChatAnswerMode.local;
-    Widget tab(String label, bool selected, Key key, ChatAnswerMode mode) {
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Material(
-            color: selected ? GuidePalette.accent : GuidePalette.surface,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
-              key: key,
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                chat.setMode(mode);
-                BeaconServiceFlutter().recoverScan();
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: AppFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? GuidePalette.onAccent : GuidePalette.ink,
-                  ),
-                ),
-              ),
+  Widget _holdBar(AppLocalizations t) {
+    final armed = !_locked && _drag.dx <= -_slideDistance;
+    return Row(
+      children: [
+        Text(
+          _clockLabel,
+          key: const Key('chat-mic-clock'),
+          style: AppFonts.poppins(fontSize: 14, color: GuidePalette.ink),
+        ),
+        const SizedBox(width: 8),
+        _MicBars(level: _level),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            _locked ? t.get('micLocked') : t.get('micSlideCancel'),
+            key: const Key('chat-mic-slide'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppFonts.poppins(
+              fontSize: 14,
+              color: armed ? GuidePalette.accent : GuidePalette.muted,
             ),
           ),
         ),
-      );
-    }
+        if (_locked)
+          const Icon(Icons.lock, key: Key('chat-mic-lock'), color: GuidePalette.accent, size: 20),
+        IconButton(
+          key: const Key('chat-mic-cancel'),
+          tooltip: t.get('micCancel'),
+          onPressed: _cancelListen,
+          icon: const Icon(Icons.close, color: GuidePalette.muted),
+        ),
+      ],
+    );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: Row(
+  Widget _exhibitionBar(AppLocalizations t, ChatController chat, String placeName) {
+    final eleven = chat.elevenKey.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      color: GuidePalette.background,
+      padding: const EdgeInsets.fromLTRB(16, 4, 8, 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          tab(
-            t.get('modeLocalLabel'),
-            local,
-            const Key('chat-mode-local'),
-            ChatAnswerMode.local,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  t.get('chatHere').replaceAll('{name}', placeName),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: GuidePalette.accent,
+                  ),
+                ),
+              ),
+              if (_conversation)
+                Tooltip(
+                  message: eleven ? 'ElevenLabs' : t.get('audioVoice'),
+                  child: Container(
+                    key: const Key('chat-voice-dot'),
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: eleven ? GuidePalette.accent : GuidePalette.muted,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          tab(
-            t.get('modeChatbotLabel'),
-            !local,
-            const Key('chat-mode-chatbot'),
-            ChatAnswerMode.deepseek,
-          ),
+          if (_phoneVoice)
+            Text(
+              t.get('phoneVoiceNotice'),
+              key: const Key('chat-phone-voice'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppFonts.poppins(fontSize: 11, color: GuidePalette.muted),
+            ),
         ],
       ),
     );
+  }
+
+  List<PopupMenuEntry<String>> _menuItems(AppLocalizations t, ChatController chat) {
+    final local = chat.mode == ChatAnswerMode.local;
+    final items = <PopupMenuEntry<String>>[
+      GuideMenuItem(
+        key: const Key('chat-mode-local'),
+        value: 'local',
+        checked: local,
+        icon: Icons.place_outlined,
+        label: t.get('modeLocalLabel'),
+      ),
+      GuideMenuItem(
+        key: const Key('chat-mode-chatbot'),
+        value: 'chatbot',
+        checked: !local,
+        icon: Icons.chat_bubble_outline,
+        label: t.get('modeChatbotLabel'),
+      ),
+    ];
+    if (!local) {
+      items.addAll([
+        GuideMenuItem(
+          key: const Key('chat-voice'),
+          value: 'voice',
+          checked: _conversation,
+          icon: Icons.graphic_eq,
+          label: t.get('voiceToggle'),
+        ),
+        GuideMenuItem(
+          key: const Key('chat-auto-send'),
+          value: 'auto',
+          checked: _autoSend,
+          icon: Icons.send_outlined,
+          label: t.get('micAutoSend'),
+        ),
+        GuideMenuItem(
+          key: const Key('chat-mic-language'),
+          value: 'mic',
+          icon: Icons.language,
+          label: t.get('micLanguage'),
+        ),
+        GuideMenuItem(
+          key: const Key('chat-talk'),
+          value: 'talk',
+          icon: Icons.mic_none,
+          label: t.get('voiceTalk'),
+        ),
+        GuideMenuItem(
+          key: const Key('chat-stop-audio'),
+          value: 'stop',
+          icon: Icons.stop_circle_outlined,
+          label: t.get('voiceStop'),
+        ),
+      ]);
+    }
+    items.addAll([
+      GuideMenuItem(
+        key: const Key('chat-settings'),
+        value: 'settings',
+        icon: Icons.settings_outlined,
+        label: t.get('settingsTitle'),
+      ),
+      GuideMenuItem(
+        key: const Key('chat-clear'),
+        value: 'clear',
+        icon: Icons.delete_outline,
+        label: t.get('clearChat'),
+      ),
+    ]);
+    return items;
+  }
+
+  Future<void> _onMenu(String value, ChatController chat) async {
+    switch (value) {
+      case 'local':
+        await chat.setMode(ChatAnswerMode.local);
+        BeaconServiceFlutter().recoverScan();
+      case 'chatbot':
+        await chat.setMode(ChatAnswerMode.deepseek);
+        BeaconServiceFlutter().recoverScan();
+      case 'voice':
+        final next = !_conversation;
+        setState(() => _conversation = next);
+        await _saveBool(conversationKey, next);
+        if (!next) await _stopAudio();
+      case 'auto':
+        final next = !_autoSend;
+        setState(() => _autoSend = next);
+        await _saveBool(autoSendKey, next);
+      case 'mic':
+        await _pickMicLanguage(chat);
+      case 'talk':
+        await _openVoice(chat);
+      case 'stop':
+        await _stopAudio();
+      case 'settings':
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const GuideSettingsScreen()),
+        );
+      case 'clear':
+        await _confirmClear(chat);
+    }
+  }
+
+  Future<void> _pickMicLanguage(ChatController chat) async {
+    final t = AppLocalizations.of(context);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        Widget option(String code, String labelKey, Key key) {
+          final selected = chat.micLanguage == code;
+          return SimpleDialogOption(
+            key: key,
+            onPressed: () => Navigator.pop(context, code),
+            child: Text(
+              selected ? '${t.get(labelKey)} ✓' : t.get(labelKey),
+              style: AppFonts.poppins(fontSize: 15),
+            ),
+          );
+        }
+
+        return SimpleDialog(
+          title: Text(
+            t.get('micLanguage'),
+            style: AppFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+          children: [
+            option('auto', 'micLangAuto', const Key('chat-mic-auto')),
+            option('es', 'micLangSpanish', const Key('chat-mic-es')),
+            option('en', 'micLangEnglish', const Key('chat-mic-en')),
+            option('pt', 'micLangPortuguese', const Key('chat-mic-pt')),
+          ],
+        );
+      },
+    );
+    if (choice == null) return;
+    await chat.setMicLanguage(choice);
+  }
+
+  Future<void> _confirmClear(ChatController chat) async {
+    final t = AppLocalizations.of(context);
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(t.get('clearChat'), style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+          content: Text(
+            t.get('clearChatBody'),
+            style: AppFonts.poppins(fontSize: 15, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(t.get('clearChatNo')),
+            ),
+            TextButton(
+              key: const Key('chat-clear-yes'),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(t.get('clearChatYes')),
+            ),
+          ],
+        );
+      },
+    );
+    if (answer == true) chat.clearConversation();
   }
 
   Widget _localQuestions(AppLocalizations t, ChatController chat, String language) {
@@ -869,6 +1196,8 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: GuidePalette.ink,
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           side: const BorderSide(color: GuidePalette.accent),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
@@ -879,86 +1208,60 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
+    if (!_localQuestionsOpen) {
+      return SafeArea(
+        top: false,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('chat-local-show'),
+            onPressed: () => setState(() => _localQuestionsOpen = true),
+            child: Text(t.get('localQuestionsShow')),
+          ),
+        ),
+      );
+    }
+
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
+      child: SizedBox(
+        height: 52,
+        child: Row(
           children: [
-            button(
-              t.get('localAskFounded'),
-              LocalExhibitionQuestion.founded,
-              const Key('chat-local-founded'),
+            Expanded(
+              child: ListView(
+                key: const Key('chat-local-row'),
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  button(
+                    t.get('localAskFounded'),
+                    LocalExhibitionQuestion.founded,
+                    const Key('chat-local-founded'),
+                  ),
+                  const SizedBox(width: 8),
+                  button(
+                    t.get('localAskImages'),
+                    LocalExhibitionQuestion.images,
+                    const Key('chat-local-images'),
+                  ),
+                  const SizedBox(width: 8),
+                  button(
+                    t.get('localAskVisit'),
+                    LocalExhibitionQuestion.visit,
+                    const Key('chat-local-visit'),
+                  ),
+                ],
+              ),
             ),
-            button(
-              t.get('localAskImages'),
-              LocalExhibitionQuestion.images,
-              const Key('chat-local-images'),
-            ),
-            button(
-              t.get('localAskVisit'),
-              LocalExhibitionQuestion.visit,
-              const Key('chat-local-visit'),
+            IconButton(
+              key: const Key('chat-local-hide'),
+              tooltip: t.get('localQuestionsHide'),
+              onPressed: () => setState(() => _localQuestionsOpen = false),
+              icon: const Icon(Icons.expand_more, color: GuidePalette.muted),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _voiceChoices(AppLocalizations t, ChatController chat) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: _VoiceSwitch(
-              label: t.get('micAutoSend'),
-              value: _autoSend,
-              switchKey: const Key('chat-auto-send'),
-              onChanged: (value) {
-                setState(() => _autoSend = value);
-                _saveBool(autoSendKey, value);
-              },
-            ),
-          ),
-          Expanded(
-            child: _VoiceSwitch(
-              label: t.get('voiceToggle'),
-              value: _conversation,
-              switchKey: const Key('chat-voice'),
-              onChanged: (value) {
-                setState(() => _conversation = value);
-                _saveBool(conversationKey, value);
-                if (!value) _stopAudio();
-              },
-            ),
-          ),
-          TextButton(
-            key: const Key('chat-stop-audio'),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: Size.zero,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-            ),
-            onPressed: _stopAudio,
-            child: Text(t.get('voiceStop')),
-          ),
-          TextButton(
-            key: const Key('chat-talk'),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: Size.zero,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-            ),
-            onPressed: () => _openVoice(chat),
-            child: Text(t.get('voiceTalk')),
-          ),
-        ],
       ),
     );
   }
@@ -985,65 +1288,54 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-class _VoiceSwitch extends StatelessWidget {
-  final String label;
-  final bool value;
-  final Key switchKey;
-  final ValueChanged<bool> onChanged;
-
-  const _VoiceSwitch({
-    required this.label,
-    required this.value,
-    required this.switchKey,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Switch(
-          key: switchKey,
-          value: value,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          activeThumbColor: GuidePalette.accent,
-          onChanged: onChanged,
-        ),
-        Flexible(
-          child: Text(
-            label,
-            style: AppFonts.poppins(fontSize: 11, color: GuidePalette.muted),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MicBars extends StatelessWidget {
+class _MicBars extends StatefulWidget {
   final double level;
 
   const _MicBars({required this.level});
 
   @override
+  State<_MicBars> createState() => _MicBarsState();
+}
+
+class _MicBarsState extends State<_MicBars> with SingleTickerProviderStateMixin {
+  late final AnimationController _wave;
+
+  @override
+  void initState() {
+    super.initState();
+    _wave = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _wave.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const shape = [0.45, 0.7, 1.0, 0.75, 0.5];
-    return Row(
-      key: const Key('chat-mic-level'),
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        for (final factor in shape)
-          Container(
-            width: 3,
-            height: 6 + 16 * level * factor,
-            margin: const EdgeInsets.symmetric(horizontal: 1),
-            decoration: BoxDecoration(
-              color: GuidePalette.accent,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-      ],
+    return AnimatedBuilder(
+      animation: _wave,
+      builder: (context, _) {
+        return Row(
+          key: const Key('chat-mic-level'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < shape.length; i++)
+              Container(
+                width: 3,
+                height: 6 + (4 + 16 * widget.level) * shape[i] * (0.45 + 0.55 * ((i.isEven ? _wave.value : 1 - _wave.value))),
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: GuidePalette.accent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1119,6 +1411,55 @@ class _Bubble extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Fila del menú del chat, con los colores, la fuente y los iconos de la guía.
+class GuideMenuItem extends PopupMenuItem<String> {
+  final bool checked;
+
+  GuideMenuItem({
+    super.key,
+    required super.value,
+    required IconData icon,
+    required String label,
+    this.checked = false,
+  }) : super(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _GuideMenuRow(icon: icon, label: label, checked: checked),
+        );
+}
+
+class _GuideMenuRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool checked;
+
+  const _GuideMenuRow({
+    required this.icon,
+    required this.label,
+    required this.checked,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = checked ? GuidePalette.accent : GuidePalette.ink;
+    return Row(
+      children: [
+        Icon(icon, color: tone, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: AppFonts.poppins(color: tone, fontSize: 15),
+          ),
+        ),
+        if (checked)
+          const Icon(Icons.check, color: GuidePalette.accent, size: 18)
+        else
+          const SizedBox(width: 18),
+      ],
     );
   }
 }

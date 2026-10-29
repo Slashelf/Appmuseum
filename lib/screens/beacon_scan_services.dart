@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:beacons_flutter/beacons_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -36,21 +35,37 @@ class BeaconServiceFlutter {
 
   void Function(ObjectModel obj)? _onObjectFound;
   void Function(String message)? _onMessage;
-  final List<void Function(ObjectModel place)> _placeListeners = [];
+  final List<void Function(ObjectModel? place)> _placeListeners = [];
   final List<void Function(bool enabled)> _enabledListeners = [];
   List<String>? _iBeaconUUIDs;
   String _permissionDeniedMessage = 'Permisos denegados para escaneo BLE';
 
-  /// Umbral de entrada. Apunta a cerca de un metro.
+  /// Borde del radio. Sale de [BeaconConfig.rssiEnter].
   int rssiThreshold = BeaconConfig.rssiEnter;
 
+  /// Las pruebas pueden fingir que el escaneo nativo no arrancó.
+  @visibleForTesting
+  bool debugStartResult = true;
+
+  final Set<String> _currentKeys = {};
+  ObjectModel? _currentPlace;
+  Timer? _lostTimer;
+  Timer? _retryTimer;
+  int _startAttempts = 0;
+
+  @visibleForTesting
+  String? debugLastNotice;
+
+  @visibleForTesting
+  int debugRetries = 0;
+
   /// Avisa el lugar al chat. No sustituye la apertura de la ficha.
-  void addPlaceListener(void Function(ObjectModel place) listener) {
+  void addPlaceListener(void Function(ObjectModel? place) listener) {
     if (_placeListeners.contains(listener)) return;
     _placeListeners.add(listener);
   }
 
-  void removePlaceListener(void Function(ObjectModel place) listener) {
+  void removePlaceListener(void Function(ObjectModel? place) listener) {
     _placeListeners.remove(listener);
   }
 
@@ -100,6 +115,7 @@ class BeaconServiceFlutter {
   }) async {
     if (scanning) return;
     _holding = false;
+    _startAttempts = 0;
     _onObjectFound = onObjectFound;
     _onMessage = onMessage;
     _iBeaconUUIDs = iBeaconUUIDs;
@@ -118,10 +134,7 @@ class BeaconServiceFlutter {
       if (!hasPermissions) {
         final granted = await _beaconsPlugin.requestPermissions();
         if (!granted) {
-          scanning = false;
-          watch.notePaused();
-          _setEnabled(false);
-          _onMessage?.call(_permissionDeniedMessage);
+          _onStartFailed(permissionsDenied: true, error: 'permission');
           return;
         }
       }
@@ -137,21 +150,59 @@ class BeaconServiceFlutter {
         onDone: () => _onScanLost(generation),
       );
 
-      scanning = true;
-      watch.noteStarted();
-      await _beaconsPlugin.startScan(
-        iBeaconUUIDs: _iBeaconUUIDs ??
-            (Platform.isIOS ? [BeaconConfig.uuid] : <String>[]),
-      );
+      final started = await _requestNativeScan();
+      await _applyNativeStart(started);
     } catch (error) {
       await _scanSubscription?.cancel();
       _scanSubscription = null;
-      scanning = false;
-      watch.notePaused();
-      _setEnabled(false);
-      _onMessage?.call(_permissionDeniedMessage);
-      debugPrint('Beacon: $error');
+      _onStartFailed(permissionsDenied: false, error: error);
     }
+  }
+
+  /// Si el teléfono no empezó a escanear, el radio no queda marcado como activo.
+  @visibleForTesting
+  Future<void> debugApplyNativeStart(bool started) => _applyNativeStart(started);
+
+  Future<void> _applyNativeStart(bool started) async {
+    if (!started) {
+      await _retireListen();
+      _onStartFailed(permissionsDenied: false, error: 'scan');
+      return;
+    }
+    scanning = true;
+    watch.noteStarted();
+    _startAttempts = 0;
+    _retryTimer?.cancel();
+  }
+
+  Future<bool> _requestNativeScan() {
+    if (_radioUnderTest) return Future.value(debugStartResult);
+    return _beaconsPlugin.startScan(
+      iBeaconUUIDs: _iBeaconUUIDs ??
+          (Platform.isIOS ? [BeaconConfig.uuid] : <String>[]),
+    );
+  }
+
+  /// Un fallo que no es de permisos vuelve a intentar mientras el visitante lo dejó encendido.
+  void _onStartFailed({required bool permissionsDenied, required Object error}) {
+    scanning = false;
+    watch.notePaused();
+    debugPrint('Beacon: $error');
+    if (permissionsDenied) {
+      _retryTimer?.cancel();
+      _setEnabled(false);
+      debugLastNotice = _permissionDeniedMessage;
+      _onMessage?.call(_permissionDeniedMessage);
+      return;
+    }
+    if (_holding || !enabled) return;
+    _startAttempts += 1;
+    debugRetries = _startAttempts;
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(seconds: 4), () {
+      if (_radioUnderTest || _holding || !enabled) return;
+      _startPlugin();
+    });
   }
 
   /// Pide los permisos de Bluetooth. La decisión final sigue siendo la del
@@ -171,37 +222,142 @@ class BeaconServiceFlutter {
     }
   }
 
-  Future<void> _onDevice(Map<String, dynamic> device) async {
-    final rssiValue = device['rssi'];
-    final rssi = rssiValue is int
-        ? rssiValue
-        : int.tryParse('${rssiValue ?? ''}') ?? -100;
+  Future<void> _onDevice(Map<String, dynamic> device) {
+    return _ingest(device);
+  }
+
+  /// Una lectura. [lookup] existe para las pruebas: en la app se busca el lugar.
+  @visibleForTesting
+  Future<void> debugIngest(
+    Map<String, dynamic> device, {
+    DateTime? now,
+    Future<ObjectModel?> Function(Map<String, dynamic> device)? lookup,
+  }) {
+    return _ingest(device, now: now, lookup: lookup);
+  }
+
+  Future<void> _ingest(
+    Map<String, dynamic> device, {
+    DateTime? now,
+    Future<ObjectModel?> Function(Map<String, dynamic> device)? lookup,
+  }) async {
+    final rssi = BeaconIdentity.readRssi(device['rssi']);
     final keys = BeaconIdentity.keysFrom(device);
-    if (keys.isEmpty) return;
+    if (rssi == null || keys.isEmpty) return;
 
-    final now = DateTime.now();
-    session.reading(keys: keys, rssi: rssi, now: now, enter: rssiThreshold);
+    final moment = now ?? DateTime.now();
+    final primary = keys.first;
+    final smoothed = session.smooth(primary, rssi);
+    session.reading(keys: keys, rssi: rssi, now: moment, enter: rssiThreshold);
 
-    final fresh = <String>[];
+    final openedKeys = <String>[];
+    var justOpened = false;
     for (final key in keys) {
-      if (session.tryOpen(key, rssi, enter: rssiThreshold)) fresh.add(key);
+      if (session.tryOpen(key, rssi, now: moment, enter: rssiThreshold)) {
+        justOpened = true;
+        openedKeys.add(key);
+      }
     }
-    if (fresh.isEmpty) return;
+    final choice = session.consider(
+      primary,
+      rssi,
+      moment,
+      justOpened: justOpened,
+      level: smoothed,
+    );
+    if (choice != ExhibitionChoice.show) {
+      for (final key in openedKeys) {
+        session.release(key);
+      }
+      if (choice == ExhibitionChoice.same && rssi >= BeaconConfig.rssiExit) {
+        _armLoss();
+      }
+      return;
+    }
 
-    final place = await DataRepository.findByBeacon(device);
+    ObjectModel? place;
+    try {
+      place = await (lookup ?? DataRepository.findByBeacon)(device);
+    } catch (error) {
+      debugPrint('Beacon: $error');
+      place = null;
+    }
     if (place == null) {
-      for (final key in fresh) {
+      for (final key in keys) {
         session.release(key);
       }
       return;
     }
-    final alreadyOpen = session.open.contains(place.id) && !fresh.contains(place.id);
+    final samePlace = _currentPlace?.id == place.id;
+    session.commitExhibition(primary);
     session.markOpen(place.id);
-    for (final listener in List<void Function(ObjectModel)>.of(_placeListeners)) {
+    _currentPlace = place;
+    _currentKeys
+      ..clear()
+      ..addAll(keys)
+      ..add(place.id);
+    _armLoss();
+    for (final listener in List<void Function(ObjectModel?)>.of(_placeListeners)) {
       listener(place);
     }
-    if (alreadyOpen) return;
+    if (samePlace) return;
     _onObjectFound?.call(place);
+  }
+
+  void _armLoss() {
+    _lostTimer?.cancel();
+    _lostTimer = Timer(BeaconConfig.signalLost, _loseExhibition);
+  }
+
+  void _loseExhibition() {
+    if (_currentPlace == null && _currentKeys.isEmpty) return;
+    session.dropExhibition(_currentKeys);
+    _currentKeys.clear();
+    _currentPlace = null;
+    for (final listener in List<void Function(ObjectModel?)>.of(_placeListeners)) {
+      listener(null);
+    }
+  }
+
+  @visibleForTesting
+  void debugShow(ObjectModel place, {required List<String> keys}) {
+    session.commitExhibition(keys.isEmpty ? place.id : keys.first);
+    _currentPlace = place;
+    _currentKeys
+      ..clear()
+      ..addAll(keys)
+      ..add(place.id);
+    for (final key in _currentKeys) {
+      session.markOpen(key);
+    }
+    _armLoss();
+    for (final listener in List<void Function(ObjectModel?)>.of(_placeListeners)) {
+      listener(place);
+    }
+  }
+
+  /// Simula una lectura de la exhibición que ya está abierta, sin buscarla en la base.
+  @visibleForTesting
+  void debugHearCurrent(int rssi) {
+    final key = session.exhibitionKey;
+    if (key == null) return;
+    final now = DateTime.now();
+    final smoothed = session.smooth(key, rssi);
+    final choice = session.consider(
+      key,
+      rssi,
+      now,
+      justOpened: false,
+      level: smoothed,
+    );
+    if (choice == ExhibitionChoice.same && rssi >= BeaconConfig.rssiExit) {
+      _armLoss();
+    }
+  }
+
+  @visibleForTesting
+  void debugStartFailed({required bool permissionsDenied}) {
+    _onStartFailed(permissionsDenied: permissionsDenied, error: 'test');
   }
 
   Future<void> pauseScan() async {
@@ -297,6 +453,10 @@ class BeaconServiceFlutter {
     watch.recoveries = 0;
     _lostBurst = 0;
     _lostBurstAt = null;
+    _startAttempts = 0;
+    debugRetries = 0;
+    _retryTimer?.cancel();
+    _lostTimer?.cancel();
   }
 
   @visibleForTesting
@@ -304,6 +464,7 @@ class BeaconServiceFlutter {
 
   Future<void> stopScan() async {
     _holding = true;
+    _retryTimer?.cancel();
     _setEnabled(false);
     await _retireListen();
     try {
@@ -314,14 +475,5 @@ class BeaconServiceFlutter {
     scanning = false;
     watch.notePaused();
     session.clear();
-  }
-
-  double calculateDistance(int rssi, int txPower) {
-    if (rssi == 0) return double.infinity;
-    final ratio = rssi * 1.0 / txPower;
-    if (ratio < 1.0) {
-      return pow(ratio, 10).toDouble();
-    }
-    return 0.89976 * pow(ratio, 7.7095) + 0.111;
   }
 }

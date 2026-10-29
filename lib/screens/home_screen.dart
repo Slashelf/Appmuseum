@@ -10,13 +10,22 @@ import 'nfc_scan_services.dart';
 import 'beacon_scan_services.dart';
 import 'chat_screen.dart';
 import '../core/beacons/beacon_config.dart';
+import '../core/location/location_gate.dart';
 import '../core/navigation/place_navigation.dart';
 import '../core/theme/app_theme.dart';
 import 'app_localizations.dart';
 import 'guide_drawer.dart';
 class MainScreen extends StatefulWidget {
   final bool showTutorial;
-  const MainScreen({super.key, this.showTutorial = true});
+  final Future<bool> Function()? locationServicesOn;
+  final Future<void> Function()? openLocationSettings;
+
+  const MainScreen({
+    super.key,
+    this.showTutorial = true,
+    this.locationServicesOn,
+    this.openLocationSettings,
+  });
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -43,18 +52,31 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // --- Tutorial ---
  // --- Tutorial Overlay ---
   bool showBeaconTutorial = true; // Siempre inicia en true
+  bool _locationOff = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     showBeaconTutorial = widget.showTutorial;
+    _checkLocation();
     isBeaconActive = beaconService.enabled;
     beaconService.bindFound((obj) {
       if (!mounted) return;
       openDetectedPlace(context, obj);
     });
     beaconService.addEnabledListener(_onBeaconEnabled);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final t = AppLocalizations.of(context);
+      beaconService.ensureScan(
+        permissionDeniedMessage: t.get('blePermissionDenied'),
+        onMessage: (message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        },
+      );
+    });
   }
 
   void _onBeaconEnabled(bool active) {
@@ -67,19 +89,38 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     beaconService.removeEnabledListener(_onBeaconEnabled);
     _blinkTimer?.cancel();
-    if (isBeaconActive) {
-      beaconService.stopScan();
-    }
     super.dispose();
+  }
+
+  Future<void> _checkLocation() async {
+    final probe = widget.locationServicesOn ?? LocationGate.servicesOn;
+    var on = true;
+    try {
+      on = await probe();
+    } catch (_) {
+      on = true;
+    }
+    if (!mounted) return;
+    setState(() => _locationOff = !on);
+  }
+
+  Future<void> _openLocation() async {
+    final open = widget.openLocationSettings ?? LocationGate.openSettings;
+    try {
+      await open();
+    } catch (_) {}
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocation();
+      if (isBeaconActive) beaconService.resumeScan();
+      return;
+    }
     if (!isBeaconActive) return;
     if (state == AppLifecycleState.paused) {
       beaconService.pauseScan();
-    } else if (state == AppLifecycleState.resumed) {
-      beaconService.resumeScan();
     }
   }
 
@@ -224,6 +265,39 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+          if (_locationOff)
+            Positioned(
+              top: 86,
+              left: 12,
+              right: 12,
+              child: Material(
+                color: GuidePalette.surface,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          t.get('locationOff'),
+                          key: const Key('location-off'),
+                          style: AppFonts.poppins(
+                            color: GuidePalette.ink,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        key: const Key('location-on'),
+                        onPressed: _openLocation,
+                        child: Text(t.get('locationTurnOn')),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (showBeaconTutorial)
             Positioned(
               left: 16,

@@ -4,10 +4,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'chat/chat_controller.dart';
+import 'chat/connection_check.dart';
 import 'chat/conversation_store.dart';
+import 'chat/guide_secrets.dart';
 import 'chat/local_guide_answer_service.dart';
 import 'chat/local_knowledge_source.dart';
 import 'chat/remote_guide_answer_service.dart';
+import 'chat/spanish_narrator.dart';
 import 'chat/visit_context.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/theme/app_theme.dart';
@@ -59,6 +62,9 @@ Future<void> main() async {
     visit: visitContext,
     compiledKey: deepseekKey,
     compiledElevenKey: elevenKey,
+    secrets: SecureGuideSecretStore(),
+    connections: HttpConnectionChecker(),
+    voices: const SpanishNarratorLookup(),
   );
 
   runApp(

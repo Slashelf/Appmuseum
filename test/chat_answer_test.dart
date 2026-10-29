@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:app_guia_v1/chat/chat_controller.dart';
 import 'package:app_guia_v1/chat/chat_faq.dart';
 import 'package:app_guia_v1/chat/chat_message.dart';
 import 'package:app_guia_v1/chat/chat_voice.dart';
+import 'package:app_guia_v1/chat/connection_check.dart';
+import 'package:app_guia_v1/chat/guide_secrets.dart';
 import 'package:app_guia_v1/chat/knowledge_source.dart';
 import 'package:app_guia_v1/chat/conversation_store.dart';
 import 'package:app_guia_v1/chat/local_exhibition_answers.dart';
@@ -12,16 +15,17 @@ import 'package:app_guia_v1/chat/local_guide_answer_service.dart';
 import 'package:app_guia_v1/chat/local_knowledge_source.dart';
 import 'package:app_guia_v1/chat/remote_guide_answer_service.dart';
 import 'package:app_guia_v1/chat/visit_context.dart';
+import 'package:app_guia_v1/chat/visit_memory.dart';
 import 'package:app_guia_v1/core/locale/locale_controller.dart';
+import 'package:app_guia_v1/core/theme/app_theme.dart';
 import 'package:app_guia_v1/data/content_repository.dart';
 import 'package:app_guia_v1/models/object_carousel_model.dart';
 import 'package:app_guia_v1/models/object_model.dart';
 import 'package:app_guia_v1/models/recommended_model.dart';
-import 'package:app_guia_v1/chat/eleven_labs_speech.dart';
-import 'package:app_guia_v1/chat/guide_narrator.dart';
 import 'package:app_guia_v1/screens/app_localizations.dart';
 import 'package:app_guia_v1/screens/beacon_scan_services.dart';
 import 'package:app_guia_v1/screens/chat_screen.dart';
+import 'package:app_guia_v1/screens/guide_settings_screen.dart';
 import 'package:app_guia_v1/screens/voice_conversation_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -56,6 +60,27 @@ void main() {
     expect(_facts(remote), contains('patrimonio funerario'));
     expect(chat.messages.last.text, isNot(contains('patrimonio funerario')));
     chat.dispose();
+  });
+
+  test('the visit summary is local and a new visit starts blank', () {
+    final memory = VisitMemory();
+    expect(memory.text, isEmpty);
+    final seen = [
+      const ChatMessage.visitor('¿Cuándo fue fundada?'),
+      const ChatMessage.guide('Fundado en 1547.'),
+    ];
+    memory.rememberPlace('sf', 'Criptas de San Francisco', const []);
+    memory.roll([
+      ...seen,
+      const ChatMessage.visitor('¿Qué muestran las imágenes?'),
+    ], 4);
+    expect(memory.text, isEmpty);
+    memory.rememberPlace('merced', 'Criptas de La Merced', seen);
+    expect(memory.boundary, seen.length);
+    expect(memory.text, contains('Criptas de San Francisco'));
+    expect(memory.text, contains('Fundado en 1547'));
+    expect(memory.text, isNot(contains('Criptas de La Merced')));
+    expect(VisitMemory().text, isEmpty);
   });
 
   test('an unrelated question is drafted by the model', () async {
@@ -327,7 +352,7 @@ void main() {
       noDataText: noData,
       aiUnavailableText: 'sin conexion',
     );
-    expect(chat.messages.last.text, contains('redactar'));
+    expect(chat.messages.last.text, contains('Falta la clave'));
     expect(chat.messages.last.text, isNot(contains('Horario de manana')));
     expect(chat.messages.last.text, isNot(contains('Criptas del templo')));
     chat.dispose();
@@ -386,6 +411,7 @@ void main() {
     expect(find.textContaining('Estás en'), findsNothing);
 
     await tester.enterText(find.byType(TextField).last, 'cripta');
+    await tester.pump();
     await tester.tap(find.byIcon(Icons.send));
     await tester.pumpAndSettle();
 
@@ -395,15 +421,18 @@ void main() {
     chat.dispose();
   });
 
-  test('the filter only blocks empty, spam and off-topic questions', () async {
+  test('the filter only blocks empty and spam questions', () async {
     final remote = _ScriptedRemote();
     final chat = _chat([
       _place('sf', 'Criptas de San Francisco', 'Las criptas guardan entierros.'),
     ], remote: remote);
     await chat.submit('   ', languageCode: 'es', noDataText: noData);
     expect(chat.messages, isEmpty);
-    await chat.submit('dolor de cabeza', languageCode: 'es', noDataText: noData);
+    await chat.submit('https://ejemplo.test/aviso', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
+    expect(chat.messages.last.text, contains('lugares'));
+    await chat.submit('dolor de cabeza', languageCode: 'es', noDataText: noData);
+    expect(remote.calls, 1);
     await chat.submit(
       'dolor de cabeza',
       languageCode: 'es',
@@ -411,10 +440,10 @@ void main() {
       spoken: true,
       fromVoice: true,
     );
-    expect(remote.calls, 0);
-    expect(chat.messages.last.text, contains('lugares'));
+    expect(remote.calls, 2);
+    expect(chat.messages.last.text, 'respuesta de la guia');
     await chat.submit('¿Cómo estás?', languageCode: 'es', noDataText: noData);
-    expect(remote.calls, 1);
+    expect(remote.calls, 3);
     expect(chat.messages.last.text, 'respuesta de la guia');
     expect(ChatFaq.offTopicReply('en'), contains('places'));
     expect(ChatFaq.offTopicReply('de'), contains('Orten'));
@@ -585,8 +614,9 @@ void main() {
       history: remote.lastHistory,
       placeName: remote.lastPlace,
     )['messages'] as List).first['content'] as String;
-    expect(system, contains('está frente a la exhibición: Criptas de San Francisco'));
-    expect(system, contains('No está en el lugar real'));
+    expect(system, contains('Exhibición actual: Criptas de San Francisco'));
+    expect(system.split('Exhibición actual:').first, isNot(contains('Criptas de San Francisco')));
+    expect(system, contains('no está en el lugar real'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, isNot(contains('14:30')));
@@ -596,6 +626,10 @@ void main() {
     expect(chat.messages, hasLength(4));
     expect(chat.messages.first.text, '¿Cuándo fue fundada?');
     expect(remote.lastPlace, 'Criptas de La Merced');
+    expect(remote.lastHistory, hasLength(1));
+    expect(remote.lastSummary, contains('Criptas de San Francisco'));
+    expect(remote.lastSummary, contains('respuesta de la guia'));
+    expect(chat.messages, hasLength(4));
     final secondFacts = _facts(remote);
     expect(secondFacts, contains('Exhibición: Criptas de La Merced'));
     expect(secondFacts, contains('Calle Hoyos'));
@@ -608,9 +642,9 @@ void main() {
     final spanish = AppLocalizations(const Locale('es'));
     final english = AppLocalizations(const Locale('en'));
     final german = AppLocalizations(const Locale('de'));
-    expect(spanish.get('chatHere'), 'Exhibición sobre {name}');
-    expect(english.get('chatHere'), 'Exhibition about {name}');
-    expect(german.get('chatHere'), 'Ausstellung über {name}');
+    expect(spanish.get('chatHere'), 'Exhibición: {name}');
+    expect(english.get('chatHere'), 'Exhibition: {name}');
+    expect(german.get('chatHere'), 'Ausstellung: {name}');
     expect(spanish.get('chatWelcome'), contains('esta exhibición'));
     expect(english.get('chatWelcome'), contains('this exhibition'));
     expect(german.get('chatWelcome'), contains('dieser Ausstellung'));
@@ -665,6 +699,7 @@ void main() {
         snippets: remote.seen.last,
         history: remote.lastHistory,
         placeName: remote.lastPlace,
+        summary: remote.lastSummary,
       );
     }
 
@@ -676,7 +711,7 @@ void main() {
     final founded = packageFor('¿Cuándo fue fundada?');
     final foundedSystem = systemOf(founded);
     expect(founded['max_tokens'], 450);
-    expect(founded['temperature'], 0.6);
+    expect(founded['temperature'], 0.7);
     expect(foundedSystem, contains('2 o 3 frases como máximo'));
     expect(foundedSystem, contains('Fundado en 1547'));
     expect(foundedSystem, contains('Calle Tarija'));
@@ -703,7 +738,7 @@ void main() {
     await chat.submit('¿Qué es la Casa de Moneda?', languageCode: 'es', noDataText: noData);
     final mintSystem = systemOf(packageFor('¿Qué es la Casa de Moneda?'));
     expect(mintSystem, contains('relación histórica directa'));
-    expect(mintSystem, contains('Casa de Moneda'));
+    expect(mintSystem, contains('otra ciudad'));
     expect(mintSystem, isNot(contains('1572')));
     expect(mintSystem, isNot(contains('Calle Bolívar')));
     expect(mintSystem, isNot(contains('1759')));
@@ -721,7 +756,11 @@ void main() {
     expect(chat.messages, hasLength(8));
     expect(chat.messages.first.text, '¿Cuándo fue fundada?');
     expect(remote.lastPlace, 'Criptas de La Merced');
-    expect(mercedSystem, contains('frente a la exhibición: Criptas de La Merced'));
+    expect(mercedSystem, contains('Exhibición actual: Criptas de La Merced'));
+    expect(
+      mercedSystem.split('Resumen de la visita:').first,
+      foundedSystem.split('Resumen de la visita:').first,
+    );
     expect(mercedSystem, contains('6 a 8 frases'));
     expect(mercedSystem, contains('Calle Hoyos'));
     expect(mercedSystem, contains('1555'));
@@ -729,7 +768,11 @@ void main() {
     expect(mercedSystem, isNot(contains('1547')));
     expect(mercedSystem, isNot(contains('1572')));
     expect(remote.seen.last.single.id, 'merced');
-    expect(dialogue, hasLength(7));
+    expect(dialogue, hasLength(1));
+    expect(dialogue.single['content'], 'Cuéntame sobre esto');
+    expect(mercedSystem, contains('Criptas de San Francisco'));
+    expect(mercedSystem, contains('¿Cuándo fue fundada?'));
+    expect(remote.lastHistory.any((message) => message.text == '¿Cuándo fue fundada?'), isFalse);
     chat.dispose();
   });
 
@@ -768,8 +811,10 @@ void main() {
       ),
     );
     await chat.submit('capital de francia', languageCode: 'es', noDataText: noData);
-    expect(chat.messages.last.text, contains('redactar'));
+    expect(chat.messages.last.text, contains('Falta la clave'));
     expect(chat.messages.last.text, isNot(contains('frailes')));
+    expect(ChatFaq.missingKey('en'), contains('key is missing'));
+    expect(ChatFaq.missingKey('de'), contains('Schlüssel'));
     chat.dispose();
   });
 
@@ -944,8 +989,12 @@ void main() {
 
     await show(chat);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
     expect(find.text('Modo local'), findsOneWidget);
     expect(find.text('Modo chatbot'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('chat-mode-local')));
+    await tester.pumpAndSettle();
     expect(find.byType(ActionChip), findsNothing);
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('chat-mic')), findsNothing);
@@ -955,25 +1004,41 @@ void main() {
     expect(AppLocalizations(const Locale('en')).get('modeChatbotLabel'), 'Chatbot mode');
     expect(AppLocalizations(const Locale('de')).get('modeLocalLabel'), 'Lokaler Modus');
 
+    final rowScroll = find.descendant(
+      of: find.byKey(const Key('chat-local-row')),
+      matching: find.byType(Scrollable),
+    );
+    final rowPosition = tester.state<ScrollableState>(rowScroll).position;
+    rowPosition.jumpTo(rowPosition.maxScrollExtent);
+    await tester.pump();
     await tester.tap(find.byKey(const Key('chat-local-visit')));
     await tester.pumpAndSettle();
     expect(remote.calls, 0);
     expect(find.textContaining('Calle Tarija'), findsOneWidget);
     expect(find.textContaining('estás'), findsNothing);
 
-    expect(find.text('Exhibición sobre Criptas de San Francisco'), findsOneWidget);
+    expect(find.text('Exhibición: Criptas de San Francisco'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('chat-local-hide')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-local-visit')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-local-show')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-local-visit')), findsOneWidget);
     final radio = BeaconServiceFlutter();
     radio.debugPrepare(scanEnabled: true, scanningNow: false, alive: false);
     radio.session.markOpen('exhibicion-viva');
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-mode-chatbot')));
     await tester.pumpAndSettle();
     expect(chat.visit.place?.id, 'sf');
-    expect(find.text('Exhibición sobre Criptas de San Francisco'), findsOneWidget);
+    expect(find.text('Exhibición: Criptas de San Francisco'), findsOneWidget);
     expect(radio.watch.recoveries, 1);
     expect(radio.session.open.contains('exhibicion-viva'), isTrue);
     expect(find.byKey(const Key('chat-mic')), findsOneWidget);
-    expect(find.byType(TextField), findsWidgets);
-    expect(find.text('Pega aquí la clave de DeepSeek'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Pega aquí la clave de DeepSeek'), findsNothing);
+    expect(find.byKey(const Key('chat-eleven-key')), findsNothing);
     expect(find.byKey(const Key('chat-local-visit')), findsNothing);
     expect(
       (await SharedPreferences.getInstance()).getString(ChatController.modeStorageKey),
@@ -997,6 +1062,7 @@ void main() {
   test('listening stops on silence and never runs past one minute', () {
     final spanish = chatListenOptions('es_ES');
     expect(spanish.pauseFor, const Duration(seconds: 3));
+    expect(chatHoldListenOptions('es_ES').pauseFor, chatListenLimit);
     expect(spanish.listenFor, const Duration(seconds: 60));
     expect(spanish.listenMode, ListenMode.dictation);
     expect(spanish.partialResults, isTrue);
@@ -1004,6 +1070,11 @@ void main() {
     expect(chatListenOptions('en_US').localeId, 'en_US');
     expect(chatListenOptions('de_DE').localeId, 'de_DE');
     expect(AppLocalizations(const Locale('es')).get('micNotHeard'), 'No te escuché, intenta de nuevo');
+    expect(AppLocalizations(const Locale('es')).get('micSlideCancel'), 'Desliza para cancelar');
+    expect(AppLocalizations(const Locale('en')).get('micSlideCancel'), 'Slide to cancel');
+    expect(AppLocalizations(const Locale('de')).get('micSlideCancel'), contains('wischen'));
+    expect(AppLocalizations(const Locale('en')).get('micLocked'), 'Recording locked');
+    expect(AppLocalizations(const Locale('de')).get('micLocked'), 'Aufnahme fixiert');
     expect(AppLocalizations(const Locale('en')).get('micNotHeard'), contains('hear'));
     expect(AppLocalizations(const Locale('de')).get('micNotHeard'), contains('gehört'));
     expect(AppLocalizations(const Locale('en')).get('micExplainBody'), contains('microphone'));
@@ -1037,10 +1108,26 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(find.byKey(const Key('chat-auto-send'))).value, isFalse);
-    expect(tester.widget<Switch>(find.byKey(const Key('chat-voice'))).value, isFalse);
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
+    final menu = tester.widget<PopupMenuButton<String>>(find.byKey(const Key('chat-menu')));
+    expect(menu.color, GuidePalette.surface);
+    expect((menu.shape as RoundedRectangleBorder).side.color, GuidePalette.accent);
+    final voiceItem = tester.widget<GuideMenuItem>(find.byKey(const Key('chat-voice')));
+    final autoItem = tester.widget<GuideMenuItem>(find.byKey(const Key('chat-auto-send')));
+    expect(voiceItem.checked, isFalse);
+    expect(autoItem.checked, isFalse);
+    expect(
+      find.descendant(of: find.byKey(const Key('chat-talk')), matching: find.byIcon(Icons.mic_none)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byKey(const Key('chat-talk')), matching: find.text('Hablar')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('chat-mode-chatbot')));
+    await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).last, 'antes');
     await tester.tap(find.byKey(const Key('chat-mic')));
     await tester.pumpAndSettle();
     expect(find.text('Para dictar tu pregunta, la app usa el micrófono. Solo escucha cuando tú lo activas.'), findsOneWidget);
@@ -1052,49 +1139,53 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continuar'));
     await tester.pumpAndSettle();
+    expect(ear.prepares, 0);
+    expect(ear.listens, 0);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.byKey(const Key('chat-mic'))));
+    await tester.pump();
+    await tester.pump();
     expect(ear.prepares, 1);
     expect(ear.listens, 1);
     expect(ear.localeId, 'es_ES');
+    expect(ear.options?.pauseFor, chatListenLimit);
     expect(find.byKey(const Key('chat-mic-level')), findsOneWidget);
+    expect(find.text('Desliza para cancelar'), findsOneWidget);
+    expect(find.text('0:00'), findsOneWidget);
 
     ear.onLevel?.call(8);
     await tester.pump();
     expect(find.byKey(const Key('chat-mic-level')), findsOneWidget);
     ear.onWords?.call('criptas de san francisco', false);
     await tester.pump();
-    expect(find.text('criptas de san francisco'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('chat-mic-cancel')));
+    await gesture.up();
+    await tester.pump();
     await tester.pumpAndSettle();
     expect(ear.cancels, 1);
-    expect(find.text('antes'), findsOneWidget);
+    expect(find.text('criptas de san francisco'), findsNothing);
     expect(find.text('No te escuché, intenta de nuevo'), findsNothing);
     expect(chat.messages, isEmpty);
 
     final beforeHold = ear.listens;
-    final gesture = await tester.startGesture(tester.getCenter(find.byKey(const Key('chat-mic'))));
-    await tester.pump(const Duration(milliseconds: 700));
+    final empty = await tester.startGesture(tester.getCenter(find.byKey(const Key('chat-mic'))));
+    await tester.pump();
+    await tester.pump();
     expect(ear.listens, beforeHold + 1);
-    await gesture.up();
+    await empty.up();
     await tester.pumpAndSettle();
     expect(ear.stops, greaterThan(0));
     expect(find.text('No te escuché, intenta de nuevo'), findsOneWidget);
     expect(chat.messages, isEmpty);
-    expect(find.text('antes'), findsOneWidget);
     ScaffoldMessenger.of(tester.element(find.byType(Scaffold))).clearSnackBars();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('chat-mic')));
-    await tester.pumpAndSettle();
-    ear.onWords?.call('hola guia', true);
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('chat-mic')));
-    await tester.pumpAndSettle();
-    expect(find.text('hola guia'), findsOneWidget);
-    expect(chat.messages, isEmpty);
-
     await tester.enterText(find.byType(TextField).last, 'cripta');
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    expect(find.byKey(const Key('chat-send')), findsOneWidget);
+    expect(find.byKey(const Key('chat-mic')), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-send')));
     await tester.pumpAndSettle();
     expect(find.text('respuesta de la guia'), findsOneWidget);
     expect(speaker.lastText, isNull);
@@ -1108,14 +1199,112 @@ void main() {
     await tester.pumpAndSettle();
     expect(ear.listens, listensBeforeVoice);
 
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-voice')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-speak-1')));
     await tester.pump();
     speaker.finish();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(ear.listens, listensBeforeVoice + 1);
+    expect(ear.options?.pauseFor, const Duration(seconds: 3));
     expect(find.byKey(const Key('chat-mic-level')), findsOneWidget);
+    chat.dispose();
+  });
+
+  testWidgets('hold sends, a left slide cancels, and the lock keeps recording', (tester) async {
+    final ear = _FakeEar();
+    final chat = _chat([
+      _place('sf', 'Criptas de San Francisco', 'Las criptas del templo.'),
+    ]);
+    SharedPreferences.setMockInitialValues({
+      'chat_mic_explained': true,
+      ChatController.modeStorageKey: 'deepseek',
+    });
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: LocaleController()),
+          ChangeNotifierProvider.value(value: chat),
+        ],
+        child: MaterialApp(
+          locale: const Locale('es'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('es'), Locale('en'), Locale('de')],
+          home: ChatScreen(ear: ear, speaker: _FakeSpeaker()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-mic')), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, 'cripta');
+    await tester.pump();
+    expect(find.byKey(const Key('chat-send')), findsOneWidget);
+    expect(find.byKey(const Key('chat-mic')), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '');
+    await tester.pump();
+    expect(find.byKey(const Key('chat-mic')), findsOneWidget);
+
+    Future<TestGesture> down() {
+      return tester.startGesture(tester.getCenter(find.byKey(const Key('chat-mic'))));
+    }
+
+    final send = await down();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Desliza para cancelar'), findsOneWidget);
+    expect(find.text('0:00'), findsOneWidget);
+    expect(find.byKey(const Key('chat-mic-level')), findsOneWidget);
+    ear.onWords?.call('hola guia', true);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('0:01'), findsOneWidget);
+    await send.up();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(ear.stops, greaterThan(0));
+    expect(find.text('hola guia'), findsOneWidget);
+    expect(chat.messages.map((message) => message.text), contains('hola guia'));
+
+    final beforeCancel = ear.cancels;
+    final beforeMessages = chat.messages.length;
+    final slide = await down();
+    await tester.pump();
+    await tester.pump();
+    ear.onWords?.call('no enviar', true);
+    await tester.pump();
+    await slide.moveBy(const Offset(-140, 0));
+    await tester.pump();
+    await slide.up();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(ear.cancels, beforeCancel + 1);
+    expect(chat.messages.length, beforeMessages);
+    expect(find.text('no enviar'), findsNothing);
+
+    final stops = ear.stops;
+    final lock = await down();
+    await tester.pump();
+    await tester.pump();
+    ear.onWords?.call('sigue grabando', true);
+    await lock.moveBy(const Offset(0, -140));
+    await tester.pump();
+    expect(find.byKey(const Key('chat-mic-lock')), findsOneWidget);
+    expect(find.text('Grabación fija'), findsOneWidget);
+    await lock.up();
+    await tester.pump();
+    expect(ear.stops, stops);
+    expect(chat.messages.length, beforeMessages);
+    expect(find.byKey(const Key('chat-mic-clock')), findsOneWidget);
+    expect(find.byKey(const Key('chat-mic-level')), findsOneWidget);
+    expect(find.byKey(const Key('chat-mic-send')), findsOneWidget);
     chat.dispose();
   });
 
@@ -1160,6 +1349,7 @@ void main() {
     expect(_threadOffset(tester), closeTo(parked, 1));
 
     await tester.enterText(find.byType(TextField).last, 'mensaje nuevo');
+    await tester.pump();
     await tester.tap(find.byIcon(Icons.send));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -1185,6 +1375,7 @@ void main() {
     expect(_threadOffset(tester), closeTo(_threadExtent(tester), 2));
 
     await tester.enterText(find.byType(TextField).last, 'pregunta desde el final');
+    await tester.pump();
     await tester.tap(find.byIcon(Icons.send));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -1282,6 +1473,54 @@ void main() {
     chat.dispose();
   });
 
+  test('a deepseek failure is said plainly and does not look like a drafted answer', () async {
+    final place = _place('sf', 'Criptas de San Francisco', 'Las criptas del templo guardan restos.');
+    final offline = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: _ErrorRemote(const SocketException('offline')),
+    );
+    await offline.submit('¿Cuándo fue fundada?', languageCode: 'es', noDataText: noData);
+    expect(offline.tookOffline, isTrue);
+    expect(offline.messages.last.text, 'No pude conectar, intenta de nuevo.');
+    expect(offline.messages.last.text, isNot(contains('restos')));
+    expect(ChatFaq.couldNotConnect('en'), 'I could not connect. Try again.');
+    expect(ChatFaq.couldNotConnect('de'), contains('Verbindung'));
+    offline.dispose();
+
+    final credit = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: _ErrorRemote(
+        const DeepSeekException(credit: true, status: 402, detail: 'Insufficient Balance'),
+      ),
+    );
+    await credit.submit('¿Cuándo fue fundada?', languageCode: 'es', noDataText: noData);
+    expect(credit.tookOffline, isFalse);
+    expect(credit.messages.last.text, contains('crédito'));
+    expect(credit.messages.last.text, isNot(contains('restos')));
+    expect(ChatFaq.noCredit('en'), contains('no credit'));
+    expect(ChatFaq.noCredit('de'), contains('Guthaben'));
+    credit.dispose();
+
+    final voice = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: _ErrorRemote(const SocketException('offline')),
+    );
+    await voice.submit(
+      'cuando se fundo',
+      languageCode: 'es',
+      noDataText: noData,
+      spoken: true,
+      fromVoice: true,
+    );
+    expect(voice.tookOffline, isTrue);
+    expect(voice.messages, hasLength(1));
+    expect(voice.messages.single.text, 'cuando se fundo');
+    voice.dispose();
+  });
+
   testWidgets('the voice screen cycles, pauses, and leaves the chat', (tester) async {
     final ear = _FakeEar();
     final remote = _ScriptedRemote();
@@ -1350,14 +1589,15 @@ void main() {
 
     await show((sentence, language) async => spoken.add(sentence), online: true, name: 'online');
     await untilListening(1);
-    expect(find.text('Exhibición sobre Criptas de San Francisco'), findsOneWidget);
+    expect(find.text('Exhibición: Criptas de San Francisco'), findsOneWidget);
     expect(find.byKey(const Key('voice-offline')), findsNothing);
     expect(ear.listens, 1);
-    expect(ear.options?.pauseFor, const Duration(milliseconds: 1200));
+    expect(ear.options?.pauseFor, chatListenLimit);
+    expect(ear.options?.cancelOnError, isFalse);
 
     ear.onWords?.call('cuando se fundo', false);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 2400));
     await untilReady(() => remote.calls >= 1 && spoken.isNotEmpty);
     expect(remote.calls, 1);
     expect(remote.lastLimit, 4);
@@ -1377,13 +1617,23 @@ void main() {
     await untilListening(beforeListen + 1);
     ear.onWords?.call('otra pregunta', false);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 2400));
     await untilReady(() => remote.calls > before && find.text('Hablando').evaluate().isNotEmpty);
     expect(remote.calls, before + 1);
     expect(find.text('Hablando'), findsOneWidget);
+    final speakingOrb = tester.widget<CustomPaint>(find.descendant(
+      of: find.byKey(const Key('voice-sphere')),
+      matching: find.byType(CustomPaint),
+    ));
+    expect((speakingOrb.painter as MuseumOrbPainter).phase, VoicePhase.speaking);
     await tester.tap(find.byKey(const Key('voice-sphere')));
     await untilReady(() => find.text('Escuchando').evaluate().isNotEmpty);
     expect(find.text('Escuchando'), findsOneWidget);
+    final listeningOrb = tester.widget<CustomPaint>(find.descendant(
+      of: find.byKey(const Key('voice-sphere')),
+      matching: find.byType(CustomPaint),
+    ));
+    expect((listeningOrb.painter as MuseumOrbPainter).phase, VoicePhase.listening);
     hang.complete();
     await tester.pump();
 
@@ -1393,6 +1643,272 @@ void main() {
     expect(chat.messages.length, greaterThan(1));
     chat.dispose();
   });
+
+  testWidgets('talk mode keeps listening after hola and a dropped ear', (tester) async {
+    final ear = _FakeEar();
+    final remote = _ScriptedRemote();
+    final chat = _chat([], remote: remote);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: LocaleController()),
+          ChangeNotifierProvider.value(value: chat),
+        ],
+        child: MaterialApp(
+          locale: const Locale('es'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('es'), Locale('en'), Locale('de')],
+          home: VoiceConversationScreen(
+            ear: ear,
+            online: () async => true,
+            onSpeak: (sentence, language) async {},
+          ),
+        ),
+      ),
+    );
+
+    Future<void> untilListening(int count) async {
+      for (var i = 0; i < 20 && ear.listens < count; i++) {
+        await tester.pump();
+      }
+    }
+
+    await untilListening(1);
+    expect(ear.listens, 1);
+
+    ear.onWords?.call('hola', false);
+    await tester.pump();
+    ear.onStatus?.call('done');
+    await untilListening(2);
+    expect(remote.calls, 0);
+    expect(find.text('hola'), findsOneWidget);
+
+    ear.onWords?.call('cuando se fundo', false);
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(remote.calls, 0);
+    await tester.pump(const Duration(milliseconds: 1400));
+    for (var i = 0; i < 20 && remote.calls < 1; i++) {
+      await tester.pump();
+    }
+    expect(remote.calls, 1);
+    expect(chat.messages.first.text, 'hola cuando se fundo');
+
+    await untilListening(ear.listens + 1);
+    final beforeErrors = ear.listens;
+    ear.onError?.call();
+    await untilListening(beforeErrors + 1);
+    expect(find.text('Toca para seguir'), findsNothing);
+    ear.onError?.call();
+    await untilListening(beforeErrors + 2);
+    ear.onError?.call();
+    await tester.pump();
+    expect(find.text('Toca para seguir'), findsWidgets);
+    chat.dispose();
+  });
+
+  test('the museum orb paints listen, think, and speak', () {
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    const size = Size(220, 220);
+    final listening = MuseumOrbPainter(phase: VoicePhase.listening, pulse: 0.2, level: 0.85);
+    final thinking = MuseumOrbPainter(phase: VoicePhase.thinking, pulse: 0.6, level: 0);
+    final speaking = MuseumOrbPainter(phase: VoicePhase.speaking, pulse: 0.3, level: 0);
+    listening.paint(canvas, size);
+    thinking.paint(canvas, size);
+    speaking.paint(canvas, size);
+    expect(listening.shouldRepaint(thinking), isTrue);
+    expect(thinking.shouldRepaint(speaking), isTrue);
+    expect(speaking.shouldRepaint(MuseumOrbPainter(phase: VoicePhase.speaking, pulse: 0.3, level: 0)), isFalse);
+    recorder.endRecording().dispose();
+  });
+
+  test('plain preference keys move into the secret store', () async {
+    SharedPreferences.setMockInitialValues({
+      ChatController.keyStorageKey: 'deep-old',
+      ChatController.elevenKeyStorageKey: 'eleven-old',
+      ChatController.elevenVoiceStorageKey: 'voice-old',
+    });
+    final secrets = MemoryGuideSecretStore();
+    final remote = _ScriptedRemote();
+    final chat = _chat(
+      [],
+      remote: remote,
+      secrets: secrets,
+    );
+    await chat.restoreSaved();
+    expect(chat.runtimeKey, 'deep-old');
+    expect(remote.apiKey, 'deep-old');
+    expect(chat.elevenKey, 'eleven-old');
+    expect(chat.elevenVoiceId, 'voice-old');
+    expect(await secrets.read(ChatController.keyStorageKey), 'deep-old');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(ChatController.keyStorageKey), isNull);
+    expect(prefs.getString(ChatController.elevenKeyStorageKey), isNull);
+    expect(prefs.getString(ChatController.elevenVoiceStorageKey), isNull);
+    chat.updateElevenKey('clave-larga-sin-heuristica');
+    chat.updateVoiceId('otra-voz-123456');
+    expect(chat.elevenKey, 'clave-larga-sin-heuristica');
+    expect(chat.elevenVoiceId, 'otra-voz-123456');
+    expect(await secrets.read(ChatController.elevenKeyStorageKey), 'clave-larga-sin-heuristica');
+    expect(await secrets.read(ChatController.elevenVoiceStorageKey), 'otra-voz-123456');
+    chat.updateElevenKey('');
+    expect(chat.elevenKey, isEmpty);
+    expect(chat.elevenVoiceId, 'otra-voz-123456');
+    chat.dispose();
+  });
+
+  test('a compiled key stays ahead of a saved key', () async {
+    SharedPreferences.setMockInitialValues({
+      ChatController.keyStorageKey: 'saved-deep',
+      ChatController.elevenKeyStorageKey: 'saved-eleven',
+    });
+    final secrets = MemoryGuideSecretStore();
+    final remote = _ScriptedRemote();
+    final chat = _chat(
+      [],
+      remote: remote,
+      secrets: secrets,
+      compiledKey: 'compiled-deep',
+    );
+    await chat.restoreSaved();
+    expect(remote.apiKey, 'compiled-deep');
+    expect(chat.deepSeekKey, 'compiled-deep');
+    expect(await secrets.read(ChatController.keyStorageKey), 'saved-deep');
+    expect(await secrets.read(ChatController.elevenKeyStorageKey), 'saved-eleven');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey(ChatController.keyStorageKey), isFalse);
+    expect(prefs.containsKey(ChatController.elevenKeyStorageKey), isFalse);
+    chat.updateDeepSeekKey('typed-over');
+    expect(remote.apiKey, 'compiled-deep');
+    expect(chat.deepSeekKey, 'compiled-deep');
+    chat.dispose();
+  });
+
+  test('clearing the conversation drops the thread and the summary', () async {
+    final place = _place('sf', 'Criptas de San Francisco', 'Las criptas del templo.');
+    final remote = _ScriptedRemote();
+    final chat = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: remote,
+    );
+    await chat.submit('¿Cuándo fue fundada?', languageCode: 'es', noDataText: noData);
+    expect(chat.messages, hasLength(2));
+    chat.clearConversation();
+    expect(chat.messages, isEmpty);
+    await chat.submit('otra pregunta', languageCode: 'es', noDataText: noData);
+    expect(remote.lastSummary, isEmpty);
+    expect(remote.lastHistory, hasLength(1));
+    expect(remote.lastHistory.single.text, 'otra pregunta');
+    chat.dispose();
+  });
+
+  testWidgets('the menu opens settings and a bad key shows the server error', (tester) async {
+    final place = _place(
+      'sf',
+      'Criptas de San Francisco',
+      'Imágenes de las criptas.',
+    );
+    final remote = _ScriptedRemote();
+    final probe = _ScriptedProbe(
+      deep: const ConnectionReport(ok: false, status: 401, detail: 'Invalid API key'),
+      eleven: const ConnectionReport(ok: false, status: 401, detail: 'unauthorized'),
+    );
+    final chat = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: remote,
+      connections: probe,
+    );
+    SharedPreferences.setMockInitialValues({});
+    await _showChat(tester, chat);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-eleven-key')), findsNothing);
+    expect(find.text('Pega aquí la clave de DeepSeek'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byType(GuideSettingsScreen), findsOneWidget);
+    expect(find.text('Ajustes'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.pumpAndSettle();
+    expect(probe.deepCalls, 0);
+    expect(find.textContaining('Falta la clave'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('chat-settings-deepseek')), 'clave-mala');
+    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.pumpAndSettle();
+    expect(probe.deepCalls, 1);
+    expect(probe.lastDeepKey, 'clave-mala');
+    expect(find.text('401 Invalid API key'), findsOneWidget);
+    expect(find.text('Conectado'), findsNothing);
+
+    probe.deep = const ConnectionReport(ok: true, status: 200);
+    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.pumpAndSettle();
+    expect(find.text('Conectado'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('chat-settings-eleven')), 'eleven-mala');
+    await tester.enterText(find.byKey(const Key('chat-settings-voice')), 'voz-de-prueba-123456');
+    await tester.tap(find.byKey(const Key('chat-test-eleven')));
+    await tester.pumpAndSettle();
+    expect(probe.elevenCalls, 1);
+    expect(probe.lastElevenKey, 'eleven-mala');
+    expect(chat.elevenVoiceId, 'voz-de-prueba-123456');
+    expect(chat.elevenKey, 'eleven-mala');
+    expect(find.text('401 unauthorized'), findsOneWidget);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-mode-local')));
+    await tester.pumpAndSettle();
+    final calls = remote.calls;
+    await tester.tap(find.byKey(const Key('chat-local-founded')));
+    await tester.pumpAndSettle();
+    expect(remote.calls, calls);
+    expect(find.textContaining('Imágenes de las criptas.'), findsNothing);
+    chat.dispose();
+  });
+
+  testWidgets('a compiled key hides its settings field', (tester) async {
+    final probe = _ScriptedProbe(
+      deep: const ConnectionReport(ok: false, status: 403, detail: 'forbidden'),
+    );
+    final chat = _chat(
+      [],
+      connections: probe,
+      compiledKey: 'compiled-deep',
+    );
+    SharedPreferences.setMockInitialValues({});
+    await _showChat(tester, chat);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-settings-deepseek')), findsNothing);
+    expect(find.text('Esta clave viene de la compilación.'), findsOneWidget);
+    expect(find.text('compiled-deep'), findsNothing);
+    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.pumpAndSettle();
+    expect(probe.lastDeepKey, 'compiled-deep');
+    expect(find.text('403 forbidden'), findsOneWidget);
+    expect(find.text('compiled-deep'), findsNothing);
+    chat.dispose();
+  });
 }
 
 ChatController _chat(
@@ -1400,6 +1916,9 @@ ChatController _chat(
   VisitContext? visit,
   RemoteGuideAnswerService? remote,
   ChatAnswerMode mode = ChatAnswerMode.deepseek,
+  GuideSecretStore? secrets,
+  ConnectionChecker? connections,
+  String compiledKey = '',
 }) {
   final chat = ChatController(
     store: MemoryConversationStore(),
@@ -1407,6 +1926,9 @@ ChatController _chat(
     answers: LocalGuideAnswerService(),
     remote: remote ?? _ScriptedRemote(),
     visit: visit ?? VisitContext(),
+    secrets: secrets,
+    connections: connections,
+    compiledKey: compiledKey,
   );
   if (mode != ChatAnswerMode.local) {
     chat.setMode(mode, persist: false);
@@ -1497,6 +2019,7 @@ class _HeldRemote extends RemoteGuideAnswerService {
     required String noDataText,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
   }) {
     final pending = Completer<String>();
     gate = pending;
@@ -1512,6 +2035,7 @@ class _HeldRemote extends RemoteGuideAnswerService {
     required void Function(String sentence) onSentence,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
     int dialogueLimit = RemoteGuideAnswerService.maxDialogueMessages,
   }) async {
     final text = await tryAsk(
@@ -1521,9 +2045,38 @@ class _HeldRemote extends RemoteGuideAnswerService {
       noDataText: noDataText,
       history: history,
       placeName: placeName,
+      summary: summary,
     );
     if (text != null && text.trim().isNotEmpty) onSentence(text.trim());
     return text;
+  }
+}
+
+class _ScriptedProbe implements ConnectionChecker {
+  ConnectionReport deep;
+  ConnectionReport eleven;
+  int deepCalls = 0;
+  int elevenCalls = 0;
+  String lastDeepKey = '';
+  String lastElevenKey = '';
+
+  _ScriptedProbe({
+    required this.deep,
+    this.eleven = const ConnectionReport(ok: true, status: 200),
+  });
+
+  @override
+  Future<ConnectionReport> deepSeek(String apiKey) async {
+    deepCalls += 1;
+    lastDeepKey = apiKey;
+    return deep;
+  }
+
+  @override
+  Future<ConnectionReport> elevenLabs(String apiKey) async {
+    elevenCalls += 1;
+    lastElevenKey = apiKey;
+    return eleven;
   }
 }
 
@@ -1536,6 +2089,7 @@ class _ScriptedRemote extends RemoteGuideAnswerService {
 
   List<ChatMessage> lastHistory = const [];
   String lastPlace = '';
+  String lastSummary = '';
 
   @override
   Future<String?> tryAsk({
@@ -1545,11 +2099,13 @@ class _ScriptedRemote extends RemoteGuideAnswerService {
     required String noDataText,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
   }) async {
     calls += 1;
     seen.add(snippets);
     lastHistory = history;
     lastPlace = placeName;
+    lastSummary = summary;
     return 'respuesta de la guia';
   }
 
@@ -1562,6 +2118,7 @@ class _ScriptedRemote extends RemoteGuideAnswerService {
     required void Function(String sentence) onSentence,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
     int dialogueLimit = RemoteGuideAnswerService.maxDialogueMessages,
   }) async {
     lastLimit = dialogueLimit;
@@ -1572,9 +2129,44 @@ class _ScriptedRemote extends RemoteGuideAnswerService {
       noDataText: noDataText,
       history: history,
       placeName: placeName,
+      summary: summary,
     );
     if (text != null && text.trim().isNotEmpty) onSentence(text.trim());
     return text;
+  }
+}
+
+class _ErrorRemote extends RemoteGuideAnswerService {
+  _ErrorRemote(this.error) : super(apiKey: 'test', fallback: LocalGuideAnswerService());
+
+  final Object error;
+
+  @override
+  Future<String?> tryAsk({
+    required String question,
+    required String languageCode,
+    required List<KnowledgeSnippet> snippets,
+    required String noDataText,
+    List<ChatMessage> history = const [],
+    String placeName = '',
+    String summary = '',
+  }) async {
+    throw error;
+  }
+
+  @override
+  Future<String?> tryAskSpoken({
+    required String question,
+    required String languageCode,
+    required List<KnowledgeSnippet> snippets,
+    required String noDataText,
+    required void Function(String sentence) onSentence,
+    List<ChatMessage> history = const [],
+    String placeName = '',
+    String summary = '',
+    int dialogueLimit = RemoteGuideAnswerService.maxDialogueMessages,
+  }) async {
+    throw error;
   }
 }
 
@@ -1591,6 +2183,7 @@ class _OfflineRemote extends RemoteGuideAnswerService {
     required String noDataText,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
   }) async {
     calls += 1;
     throw const SocketException('offline');
@@ -1605,6 +2198,7 @@ class _OfflineRemote extends RemoteGuideAnswerService {
     required void Function(String sentence) onSentence,
     List<ChatMessage> history = const [],
     String placeName = '',
+    String summary = '',
     int dialogueLimit = RemoteGuideAnswerService.maxDialogueMessages,
   }) async {
     calls += 1;
@@ -1666,6 +2260,7 @@ class _FakeRepository implements ContentRepository {
 
 class _FakeEar implements ChatEar {
   ChatStatus? onStatus;
+  void Function()? onError;
   ChatWords? onWords;
   ChatLevel? onLevel;
   String? localeId;
@@ -1681,6 +2276,7 @@ class _FakeEar implements ChatEar {
   }) async {
     prepares += 1;
     this.onStatus = onStatus;
+    this.onError = onError;
     return true;
   }
 
