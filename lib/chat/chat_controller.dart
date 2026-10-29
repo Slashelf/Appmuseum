@@ -295,11 +295,20 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
-    if (ChatFaq.isSpam(trimmed) || ChatFaq.isOffTopic(trimmed)) {
-      final reply = ChatFaq.offTopicReply(languageCode);
-      store.add(ChatMessage.guide(reply));
-      notifyListeners();
-      onSentence?.call(reply);
+    if (ChatFaq.isSpam(trimmed)) {
+      _sayLocal(ChatFaq.offTopicReply(languageCode), onSentence);
+      return;
+    }
+    if (ChatFaq.isJoke(trimmed)) {
+      _sayLocal(ChatFaq.jokeReply(languageCode, trimmed), onSentence);
+      return;
+    }
+    if (ChatFaq.asksCurrentExhibition(trimmed) && visit.place == null) {
+      _sayLocal(ChatFaq.noExhibitionReply(languageCode), onSentence);
+      return;
+    }
+    if (ChatFaq.isOffTopic(trimmed)) {
+      _sayLocal(ChatFaq.offTopicReply(languageCode), onSentence);
       return;
     }
 
@@ -324,6 +333,12 @@ class ChatController extends ChangeNotifier {
     }
     store.add(ChatMessage.guide(reply));
     notifyListeners();
+  }
+
+  void _sayLocal(String reply, void Function(String sentence)? onSentence) {
+    store.add(ChatMessage.guide(reply));
+    notifyListeners();
+    onSentence?.call(reply);
   }
 
   Future<String> _reply({

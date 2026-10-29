@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'chat_faq.dart';
 import 'chat_message.dart';
 import 'guide_answer_service.dart';
 import 'knowledge_source.dart';
@@ -289,17 +290,17 @@ class RemoteGuideAnswerService implements GuideAnswerService {
   }
 
   /// Texto fijo. El resumen y la ficha van al final para reutilizar esta parte.
-  static const _fixedInstructions =
-      'Eres el guía de la Casa Nacional de la Moneda de Potosí. Eres amable y profesional, y puedes saludar. '
+  static final String _fixedInstructions =
+      'Eres el guía de la Casa Nacional de la Moneda de Potosí. Eres amable y profesional. '
+      '${ChatFaq.voiceSessionRules}\n'
       'Hablas como una persona, con frases claras. No uses listas, símbolos, emojis ni paréntesis. '
       'Horarios, precios, direcciones y teléfonos: no lo inventes; salen solo de la ficha.\n'
-      'Si el visitante saluda, responde el saludo en una frase y ofrece ayuda.\n'
-      'Si pide un chiste o habla de algo que no es esta casa ni esta exhibición, responde exactamente, en el idioma del visitante, con esta idea: '
-      '«Mmm… no sé. No me pagan para eso, y además mi creador me dio una personalidad aburrida.»\n'
-      'Si hay una exhibición actual, habla solo de ese objeto.\n'
-      'Si la exhibición actual es «ninguna exhibición elegida», habla solo de la Casa Nacional de la Moneda y de lo que le pertenece, en pocas frases.\n'
+      'Si hay una exhibición actual, cuéntala. Si preguntan por la casa, habla también de ella.\n'
+      'Si la exhibición actual es «ninguna exhibición elegida», no inventes una exhibición. '
+      'Habla de la Casa Nacional de la Moneda y de todo lo que comprende.\n'
       'Pregunta concreta: 2 o 3 frases como máximo. Pregunta general: 4 a 6 frases. '
-      'Responde siempre en el idioma en que te habla el visitante.';
+      'Responde siempre en el idioma en que te habla el visitante. '
+      'Si el idioma no es español, di la misma idea de las frases fijas en su idioma.';
 
   /// `es`, `en`, `de` o `pt`. Va después del resumen para no mover el prefijo fijo.
   static String answerLanguage(String languageCode) {

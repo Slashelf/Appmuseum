@@ -435,10 +435,10 @@ void main() {
     expect(chat.messages, isEmpty);
     await chat.submit('https://ejemplo.test/aviso', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
-    expect(chat.messages.last.text, contains('pagan'));
+    expect(chat.messages.last.text, contains('se me escapa'));
     await chat.submit('dolor de cabeza', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
-    expect(chat.messages.last.text, contains('pagan'));
+    expect(chat.messages.last.text, contains('se me escapa'));
     final spoken = <String>[];
     await chat.submit(
       'dolor de cabeza',
@@ -449,16 +449,27 @@ void main() {
       onSentence: spoken.add,
     );
     expect(remote.calls, 0);
-    expect(chat.messages.last.text, contains('pagan'));
+    expect(chat.messages.last.text, contains('se me escapa'));
     expect(spoken, hasLength(1));
-    expect(spoken.single, contains('pagan'));
+    expect(spoken.single, contains('se me escapa'));
     await chat.submit('cuentame un chiste', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
+    expect(chat.messages.last.text, ChatFaq.jokeOwes);
+    await chat.submit('un chiste', languageCode: 'es', noDataText: noData);
+    expect(chat.messages.last.text, ChatFaq.jokeForgot);
+    await chat.submit('hola', languageCode: 'es', noDataText: noData);
+    await chat.submit('preséntate', languageCode: 'es', noDataText: noData);
+    await chat.submit('¿quién eres?', languageCode: 'es', noDataText: noData);
+    expect(remote.calls, 3);
+    await chat.submit('¿en qué exhibición estoy?', languageCode: 'es', noDataText: noData);
+    expect(remote.calls, 3);
+    expect(chat.messages.last.text, ChatFaq.noExhibitionNow);
     await chat.submit('¿Cómo estás?', languageCode: 'es', noDataText: noData);
-    expect(remote.calls, 1);
+    expect(remote.calls, 4);
     expect(chat.messages.last.text, 'respuesta de la guia');
-    expect(ChatFaq.offTopicReply('en'), contains("don't pay me"));
-    expect(ChatFaq.offTopicReply('de'), contains('nicht bezahlt'));
+    expect(ChatFaq.offTopicReply('en'), contains('Casa Nacional de Moneda'));
+    expect(ChatFaq.offTopicReply('de'), contains('Casa Nacional de Moneda'));
+    expect(ChatFaq.offTopicReply('es'), isNot(contains('pagan')));
     expect(ChatFaq.cannotDraft('en'), contains('draft'));
     expect(ChatFaq.cannotDraft('de'), contains('formulieren'));
     chat.dispose();
@@ -628,7 +639,7 @@ void main() {
     )['instructions'] as String;
     expect(system, contains('Exhibición actual: Criptas de San Francisco'));
     expect(system.split('Exhibición actual:').first, isNot(contains('Criptas de San Francisco')));
-    expect(system, contains('habla solo de ese objeto'));
+    expect(system, contains('Si hay una exhibición actual, cuéntala'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, isNot(contains('14:30')));
@@ -747,7 +758,7 @@ void main() {
 
     await chat.submit('¿Qué es la Casa de Moneda?', languageCode: 'es', noDataText: noData);
     final mintSystem = systemOf(packageFor('¿Qué es la Casa de Moneda?'));
-    expect(mintSystem, contains('habla solo de ese objeto'));
+    expect(mintSystem, contains('Si hay una exhibición actual, cuéntala'));
     expect(mintSystem, isNot(contains('1572')));
     expect(mintSystem, isNot(contains('Calle Bolívar')));
     expect(mintSystem, isNot(contains('1759')));
@@ -1614,11 +1625,13 @@ void main() {
     expect(remote.apiKey, secret);
     expect(voice.voice, 'ara');
     expect(voice.instructions, contains('Casa Nacional de la Moneda'));
-    expect(voice.instructions, contains('personalidad aburrida'));
+    expect(voice.instructions, contains(ChatFaq.jokeOwes));
+    expect(voice.instructions, contains('no una exhibición'));
     expect(voice.instructions, contains('Criptas de San Francisco'));
     expect(remote.calls, 0);
     expect(find.text('idle'), findsOneWidget);
-    expect(find.text('Personaje de aln.omrv, CC BY.'), findsOneWidget);
+    expect(find.text('Personaje de aln.omrv, CC BY.'), findsNothing);
+    expect(find.textContaining('.riv'), findsNothing);
 
     voice.onVisitor?.call(true);
     await tester.pump();
@@ -1656,6 +1669,67 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(chat.messages.length, greaterThan(1));
+    chat.dispose();
+  });
+
+  testWidgets('locking the screen reconnects the voice without an error', (tester) async {
+    final voice = _FakeVoice();
+    final chat = _chat(
+      [_place('sf', 'Criptas de San Francisco', 'Las criptas del templo.')],
+      compiledKey: 'clave-ajustes',
+    );
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: LocaleController()),
+          ChangeNotifierProvider.value(value: chat),
+        ],
+        child: MaterialApp(
+          locale: const Locale('es'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('es'), Locale('en'), Locale('de')],
+          home: VoiceConversationScreen(
+            session: voice,
+            online: () async => true,
+            character: (context, mood) => Text(mood.name, key: const Key('voice-mood')),
+          ),
+        ),
+      ),
+    );
+
+    Future<void> untilReady(bool Function() ready) async {
+      for (var i = 0; i < 20 && !ready(); i++) {
+        await tester.pump();
+      }
+    }
+
+    await untilReady(() => voice.starts == 1);
+    expect(find.byKey(const Key('voice-offline')), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    voice.onFailure?.call(const XaiVoiceFailure(offline: true));
+    await tester.pump();
+    expect(voice.closes, 1);
+    expect(find.byKey(const Key('voice-offline')), findsNothing);
+    expect(find.textContaining('401'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await untilReady(() => voice.starts >= 2);
+    expect(voice.starts, 2);
+    expect(find.byKey(const Key('voice-offline')), findsNothing);
+    expect(find.text('idle'), findsOneWidget);
+
+    voice.onFailure?.call(const XaiVoiceFailure(status: 403, detail: 'forbidden'));
+    await tester.pump();
+    expect(find.textContaining('403'), findsOneWidget);
     chat.dispose();
   });
 
@@ -1743,6 +1817,7 @@ void main() {
     expect(names.speak, 'jump');
     expect(names.error, 'wrong');
     expect(names.greet, isNull);
+    expect(GuideOrb.diameter, 440);
 
     final hello = OrbPropertyNames.detect(const [
       ViewModelProperty('typingBoolean', DataType.boolean),
@@ -2283,6 +2358,7 @@ class _FakeVoice implements XaiVoiceSession {
   String voice = '';
   int starts = 0;
   int interrupts = 0;
+  int closes = 0;
   final said = <String>[];
   final asked = <String>[];
   final updates = <String>[];
@@ -2350,7 +2426,9 @@ class _FakeVoice implements XaiVoiceSession {
   }
 
   @override
-  Future<void> close() async {}
+  Future<void> close() async {
+    closes += 1;
+  }
 
   @override
   void setMuted(bool muted) {}

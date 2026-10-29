@@ -118,18 +118,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {});
     _scrollToBottomNow();
-    final t = AppLocalizations.of(context);
-    try {
-      await BeaconServiceFlutter().ensureScan(
-        permissionDeniedMessage: t.get('blePermissionDenied'),
-        onMessage: (message) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
-        },
-      );
-    } catch (_) {}
   }
 
   @override

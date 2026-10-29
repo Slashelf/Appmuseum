@@ -66,17 +66,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       openDetectedPlace(context, obj);
     });
     beaconService.addEnabledListener(_onBeaconEnabled);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final t = AppLocalizations.of(context);
-      beaconService.ensureScan(
-        permissionDeniedMessage: t.get('blePermissionDenied'),
-        onMessage: (message) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-        },
-      );
-    });
   }
 
   void _onBeaconEnabled(bool active) {

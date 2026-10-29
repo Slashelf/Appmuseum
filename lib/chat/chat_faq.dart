@@ -676,8 +676,25 @@ class ChatFaq {
     return score;
   }
 
+  static const jokeOwes = 'Cobro por chiste, carnal, y tú ya me debes tres.';
+  static const jokeForgot = 'Uy, se me olvidaron todos justo ahorita.';
+  static const strayTopic =
+      'Eso se me escapa, yo solo sé de la Casa Nacional de Moneda. ¿Quieres que te cuente algo de aquí?';
+  static const noExhibitionNow =
+      'En ninguna por el momento, pero cuando estés cerca de alguna te hablo y te cuento sobre ella.';
+
+  /// Reglas que la sesión de voz repite si el texto que le pasan no las trae.
+  static const voiceSessionRules =
+      'La Casa Nacional de la Moneda es la casa, no una exhibición. '
+      'Si el visitante saluda, pide que te presentes o pregunta quién eres, saluda y preséntate como guía de la Casa Nacional de la Moneda. '
+      'Si pregunta en qué exhibición está y no hay una cerca, o la exhibición actual es «ninguna exhibición elegida», di exactamente: «$noExhibitionNow» '
+      'Puedes hablar de la Casa Nacional de la Moneda y de todo lo que comprende. '
+      'Solo si pide un chiste o una broma, responde con una de estas frases y nada más: «$jokeOwes» o «$jokeForgot» '
+      'Si el tema no es esta casa ni lo que comprende, di exactamente: «$strayTopic»';
+
   /// Vacío, spam o un tema fuera de la visita. El filtro no redacta la respuesta.
   static bool isSpam(String question) {
+    if (isIntroduction(question) || asksCurrentExhibition(question)) return false;
     final trimmed = question.trim();
     if (trimmed.isEmpty) return false;
     final compact = trimmed.replaceAll(RegExp(r'\s+'), '');
@@ -685,20 +702,83 @@ class ChatFaq {
     return RegExp(r'^(https?://|www\.)\S+$', caseSensitive: false).hasMatch(trimmed);
   }
 
+  /// Un saludo o un «quién eres». No es un tema fuera de la casa.
+  static bool isIntroduction(String question) {
+    final words = _words(question);
+    if (words.isEmpty || isJoke(question) || _hits(words, _offTopicWords)) return false;
+    const hello = {'hola', 'holi', 'hello', 'hi', 'hey', 'hallo', 'buenas', 'saludos'};
+    const intro = {'presentate', 'presentacion', 'introduce', 'introducete'};
+    final asksName = (words.contains('quien') && words.contains('eres')) ||
+        (words.contains('who') && words.contains('you')) ||
+        (words.contains('wer') && words.contains('bist'));
+    if (_hits(words, intro) || asksName) return true;
+    return words.any(hello.contains) && words.length <= 6;
+  }
+
+  /// «¿En qué exhibición estoy?» La casa misma no cuenta como exhibición.
+  static bool asksCurrentExhibition(String question) {
+    final words = _words(question);
+    final place = words.any(
+      (word) =>
+          word == 'exhibicion' ||
+          word == 'exhibiciones' ||
+          word == 'exhibition' ||
+          word == 'exhibitions' ||
+          word == 'ausstellung' ||
+          word == 'ausstellungen',
+    );
+    if (!place) return false;
+    const where = {
+      'estoy', 'estamos', 'donde', 'cual', 'encuentro', 'which', 'where', 'am',
+      'welche', 'wo', 'bin', 'aktuell', 'actual', 'ahora',
+    };
+    return words.any(where.contains);
+  }
+
+  static bool isJoke(String question) => _hits(_words(question), _jokeWords);
+
   static bool isOffTopic(String question) {
+    if (isIntroduction(question) || asksCurrentExhibition(question)) return false;
     final words = _words(question);
     if (words.isEmpty || !_hits(words, _offTopicWords)) return false;
     return !_hits(words, _heritageWords);
   }
 
+  static String jokeReply(String languageCode, String question) {
+    final forgot = question.trim().length.isOdd;
+    switch (_language(languageCode)) {
+      case 'en':
+        return forgot
+            ? 'Oh, I forgot every one of them just now.'
+            : 'I charge per joke, pal, and you already owe me three.';
+      case 'de':
+        return forgot
+            ? 'Ups, gerade sind mir alle entfallen.'
+            : 'Witze kosten extra, und du schuldest mir schon drei.';
+      default:
+        return forgot ? jokeForgot : jokeOwes;
+    }
+  }
+
   static String offTopicReply(String languageCode) {
     switch (_language(languageCode)) {
       case 'en':
-        return "Mmm… I don't know. They don't pay me for that, and my creator gave me a boring personality.";
+        return 'That one gets away from me. I only know the Casa Nacional de Moneda. Want me to tell you something from here?';
       case 'de':
-        return 'Mmm… ich weiß nicht. Dafür werde ich nicht bezahlt, und mein Schöpfer hat mir eine langweilige Persönlichkeit gegeben.';
+        return 'Das entgeht mir. Ich kenne nur die Casa Nacional de Moneda. Soll ich dir etwas von hier erzählen?';
       default:
-        return 'Mmm… no sé. No me pagan para eso, y además mi creador me dio una personalidad aburrida.';
+        return strayTopic;
+    }
+  }
+
+  static String noExhibitionReply(String languageCode) {
+    switch (_language(languageCode)) {
+      case 'en':
+        return 'None for the moment. When you get close to one, I will tell you about it.';
+      case 'de':
+        return 'Im Moment keine. Wenn du nahe an einer bist, erzähle ich dir von ihr.';
+      default:
+        return noExhibitionNow;
     }
   }
 
@@ -755,6 +835,9 @@ class ChatFaq {
     'contrato', 'eleccion', 'elecciones', 'voto', 'votar', 'candidato',
     'presidente', 'election', 'elections', 'president', 'wahl', 'praesident',
     'politica', 'politico', 'politics',
+  };
+
+  static const _jokeWords = {
     'chiste', 'chistes', 'broma', 'bromas', 'joke', 'jokes', 'witz', 'witze',
   };
 

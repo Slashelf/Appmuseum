@@ -71,6 +71,9 @@ class OrbPropertyNames {
 
 /// Personaje del modo hablar. En reposo respira; el archivo ya trae ese estado.
 class GuideOrb extends StatefulWidget {
+  /// Diámetro en pantalla. El círculo anterior medía 220; este es el doble de radio.
+  static const double diameter = 440;
+
   final GuideOrbMood mood;
 
   const GuideOrb({super.key, required this.mood});

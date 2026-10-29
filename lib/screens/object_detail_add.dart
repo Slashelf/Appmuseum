@@ -29,6 +29,7 @@ class _ObjectDetailAdvancedScreenState
     final object = widget.object.localized(
       Localizations.localeOf(context).languageCode,
     );
+    final notes = _notesOnScreen(object.historicalNotes);
 
     return Scaffold(
       backgroundColor: GuidePalette.background,
@@ -229,9 +230,7 @@ class _ObjectDetailAdvancedScreenState
                               ),
                               const SizedBox(height: 6),
                               GuideProse(
-                                text: (object.historicalNotes ?? '').trim().isEmpty
-                                    ? t.get('notAvailable')
-                                    : object.historicalNotes!,
+                                text: notes.isEmpty ? t.get('notAvailable') : notes,
                                 style: AppFonts.poppins(
                                   fontSize: 15,
                                   height: 1.45,
@@ -330,4 +329,17 @@ class _ObjectDetailAdvancedScreenState
       ),
     );
   }
+}
+
+/// Quita la línea del autor de la foto. El dato sigue en la ficha.
+String _notesOnScreen(String? notes) {
+  final text = (notes ?? '').trim();
+  if (!text.contains('CC')) return text;
+  const markers = ['La foto', 'Fotos:', 'Photograph', 'Photos:', 'Foto:'];
+  var start = text.length;
+  for (final marker in markers) {
+    final at = text.indexOf(marker);
+    if (at >= 0 && at < start) start = at;
+  }
+  return text.substring(0, start).trim();
 }

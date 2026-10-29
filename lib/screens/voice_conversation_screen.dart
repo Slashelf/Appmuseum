@@ -103,7 +103,8 @@ class VoiceConversationScreen extends StatefulWidget {
   State<VoiceConversationScreen> createState() => _VoiceConversationScreenState();
 }
 
-class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
+class _VoiceConversationScreenState extends State<VoiceConversationScreen>
+    with WidgetsBindingObserver {
   XaiVoiceSession? _owned;
   XaiVoiceSession? _session;
   Timer? _errorFace;
@@ -114,6 +115,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _offline = false;
   bool _alive = false;
   bool _opening = false;
+  bool _away = false;
+  Future<void>? _leaving;
   bool _scripted = false;
   bool _stored = false;
   bool _switchAsk = false;
@@ -131,6 +134,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
@@ -146,6 +150,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _visit?.removeListener(_onExhibition);
     _errorFace?.cancel();
     _think?.cancel();
@@ -177,6 +182,58 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     session.onFailure = _onFailure;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_returnFromBackground());
+      return;
+    }
+    unawaited(_leaveForeground());
+  }
+
+  /// Cierra el audio y el socket sin pintar el aviso de sin conexión.
+  Future<void> _leaveForeground() {
+    if (_away) return _leaving ?? Future.value();
+    _away = true;
+    _generation++;
+    _alive = false;
+    _opening = false;
+    _think?.cancel();
+    final session = _session;
+    _leaving = () async {
+      if (session == null) return;
+      try {
+        await session.close();
+      } catch (_) {}
+    }();
+    return _leaving!;
+  }
+
+  /// Al volver, abre de nuevo la voz y recupera lo guardado del chat.
+  Future<void> _returnFromBackground() async {
+    if (!_away) return;
+    final pending = _leaving;
+    if (pending != null) await pending;
+    _leaving = null;
+    if (!mounted) return;
+    _away = false;
+    final chat = context.read<ChatController>();
+    try {
+      await chat.restoreSaved();
+    } catch (_) {}
+    if (!mounted || _away) return;
+    if (_offline) {
+      setState(() {
+        _offline = false;
+        _phase = VoicePhase.listening;
+        _mood = GuideOrbMood.idle;
+      });
+    }
+    _alive = false;
+    _opening = false;
+    await _open();
+  }
+
   Future<bool> _reach() {
     if (widget.online != null) return widget.online!();
     if (const bool.fromEnvironment('FLUTTER_TEST') || Platform.environment['FLUTTER_TEST'] == 'true') {
@@ -190,7 +247,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     _opening = true;
     final generation = ++_generation;
     final online = await _reach();
-    if (!mounted || generation != _generation) {
+    if (!mounted || generation != _generation || _away) {
       _opening = false;
       return;
     }
@@ -351,7 +408,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   void _onFailure(XaiVoiceFailure failure) {
-    if (!mounted) return;
+    if (!mounted || _away) return;
     _think?.cancel();
     _alive = false;
     _scripted = false;
@@ -602,26 +659,33 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                     style: AppFonts.poppins(fontSize: 14, color: GuidePalette.ink, height: 1.35),
                   ),
                 ),
-              const Spacer(),
-              GestureDetector(
-                key: const Key('voice-sphere'),
-                onTap: () {
-                  if (_phase == VoicePhase.paused) {
-                    _resumeFromPause();
-                    return;
-                  }
-                  if (_phase == VoicePhase.speaking || _phase == VoicePhase.thinking) {
-                    _interrupt();
-                  }
-                },
-                child: SizedBox(width: 220, height: 220, child: character),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                t.get('voiceOrbCredit'),
-                key: const Key('voice-orb-credit'),
-                textAlign: TextAlign.center,
-                style: AppFonts.poppins(fontSize: 11, color: GuidePalette.muted),
+              Flexible(
+                child: GestureDetector(
+                  key: const Key('voice-sphere'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (_phase == VoicePhase.paused) {
+                      _resumeFromPause();
+                      return;
+                    }
+                    if (_phase == VoicePhase.speaking || _phase == VoicePhase.thinking) {
+                      _interrupt();
+                    }
+                  },
+                  child: Center(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final height = constraints.maxHeight;
+                        final bound = width < height ? width : height;
+                        final side = !bound.isFinite
+                            ? GuideOrb.diameter
+                            : (bound > GuideOrb.diameter ? GuideOrb.diameter : bound);
+                        return SizedBox(width: side, height: side, child: character);
+                      },
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               if (status.isNotEmpty)
@@ -636,7 +700,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                   onPressed: _resumeFromPause,
                   child: Text(t.get('voiceTapToContinue')),
                 ),
-              const Spacer(),
               if (_userLine.trim().isNotEmpty)
                 Text(
                   _userLine,

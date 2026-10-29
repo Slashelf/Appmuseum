@@ -127,11 +127,14 @@ void main() {
     expect(dialogue.last['content'], '¿quién fundó este lugar?');
     final system = body['instructions'] as String;
     expect(system, contains('Casa Nacional de la Moneda'));
-    expect(system, contains('personalidad aburrida'));
+    expect(system, contains(ChatFaq.jokeOwes));
+    expect(system, contains(ChatFaq.strayTopic));
+    expect(system, contains('no una exhibición'));
+    expect(system, isNot(contains('pagan')));
     expect(system, contains('Exhibición actual: Convento de San Francisco'));
     expect(system.split('Exhibición actual:').first, isNot(contains('Convento de San Francisco')));
     expect(system.split('Resumen de la visita:').first, isNot(contains('Entierros bajo el altar')));
-    expect(system, contains('habla solo de ese objeto'));
+    expect(system, contains('Si hay una exhibición actual, cuéntala'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, contains('Entierros bajo el altar mayor'));

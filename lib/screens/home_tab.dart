@@ -64,14 +64,6 @@ class _HomeTabState extends State<HomeTab> {
                       );
                     },
                   ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      t.get('photoCredit'),
-                      style: AppFonts.poppins(fontSize: 11, height: 1.3, color: GuidePalette.muted),
-                    ),
-                  ),
                   const SizedBox(height: 12),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),

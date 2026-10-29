@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 import 'package:record/record.dart';
 
+import 'chat_faq.dart';
 import 'remote_guide_answer_service.dart';
 
 /// Aviso ya interpretado de un evento del agente de voz. No abre la red.
@@ -114,6 +115,13 @@ class XaiRealtime {
 
   static String voiceId(String stored) => stored.trim() == 'leo' ? 'leo' : 'ara';
 
+  /// La sesión de voz lleva las mismas respuestas fijas que el chat escrito.
+  static String _sessionInstructions(String instructions) {
+    final text = instructions.trim();
+    if (text.contains(ChatFaq.jokeOwes)) return text;
+    return '$text\n${ChatFaq.voiceSessionRules}';
+  }
+
   static Map<String, Object?> sessionUpdate({
     required String instructions,
     required String voice,
@@ -123,7 +131,7 @@ class XaiRealtime {
       'type': 'session.update',
       'session': {
         'voice': voiceId(voice),
-        'instructions': instructions,
+        'instructions': _sessionInstructions(instructions),
         'turn_detection': {'type': 'server_vad'},
         'reasoning': {'effort': 'none'},
         'audio': {

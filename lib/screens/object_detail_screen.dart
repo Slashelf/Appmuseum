@@ -16,20 +16,6 @@ import 'object_detail_add.dart';
 import 'qr_scan_screen.dart';
 import 'beacon_scan_services.dart';
 
-/// Línea de crédito si las notas nombran al autor de la foto.
-String? _photoCredit(String? notes) {
-  final text = notes?.trim() ?? '';
-  if (!text.contains('CC')) return null;
-  const markers = ['La foto', 'Fotos:', 'Photograph', 'Photos:', 'Foto:'];
-  var start = -1;
-  for (final marker in markers) {
-    final at = text.indexOf(marker);
-    if (at >= 0 && (start < 0 || at < start)) start = at;
-  }
-  if (start < 0) return null;
-  return text.substring(start).trim();
-}
-
 void openDetectedPlace(BuildContext context, ObjectModel place) {
   openPlaceFromBeacon(
     context,
@@ -167,17 +153,6 @@ class ObjectDetailScreen extends StatelessWidget {
                               color: GuidePalette.ink,
                             ),
                           ),
-                          if (_photoCredit(shown.historicalNotes) != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _photoCredit(shown.historicalNotes)!,
-                              style: AppFonts.poppins(
-                                fontSize: 12,
-                                height: 1.3,
-                                color: GuidePalette.muted,
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 14),
                           GuideProse(
                             text: shown.description,

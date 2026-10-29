@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:app_guia_v1/chat/chat_controller.dart';
+import 'package:app_guia_v1/chat/chat_faq.dart';
 import 'package:app_guia_v1/chat/chat_message.dart';
 import 'package:app_guia_v1/chat/chat_voice.dart';
 import 'package:app_guia_v1/chat/conversation_store.dart';
@@ -36,6 +37,8 @@ void main() {
     expect(XaiRealtime.endpoint.toString(), 'wss://api.x.ai/v1/realtime?model=grok-voice-latest');
     expect(session['voice'], 'ara');
     expect(session['instructions'], contains('personalidad aburrida'));
+    expect(session['instructions'], contains(ChatFaq.jokeOwes));
+    expect(session['instructions'], contains(ChatFaq.noExhibitionNow));
     expect((session['turn_detection'] as Map)['type'], 'server_vad');
     expect((session['reasoning'] as Map)['effort'], 'none');
     final audio = session['audio'] as Map;
