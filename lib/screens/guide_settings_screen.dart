@@ -61,13 +61,15 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
         children: [
           if (chat.hasCompiledKey)
             _note(t.get('settingsCompiled'))
-          else
+          else ...[
             _secretField(
               key: const Key('chat-settings-grok'),
               label: t.get('settingsDeepSeek'),
               controller: _grok,
               onChanged: chat.updateDeepSeekKey,
             ),
+            if (chat.runtimeKey.isNotEmpty) _note(t.get('settingsKeyUsed')),
+          ],
           const SizedBox(height: 8),
           _probeButton(
             key: const Key('chat-test-grok'),

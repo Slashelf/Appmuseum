@@ -3,8 +3,8 @@
     "id": "D5:E0:59:B6:6F:C8",
     "name": "La Virgen del Cerro",
     "name2": "Óleo anónimo, hacia 1740",
-    "description": "Óleo anónimo de hacia 1740, de unos 143 por 110 centímetros, conservado en la Casa Nacional de la Moneda de Potosí. La silueta de la Virgen es el Cerro Rico.",
-    "cryptDescription": "La Virgen del Cerro es un óleo anónimo del siglo XVIII, fechado hacia 1740. Mide cerca de 143 por 110 centímetros y se guarda en la Casa Nacional de la Moneda de Potosí. El manto de la Virgen dibuja el Cerro Rico. Arriba se ven el sol, la luna y la Trinidad. Abajo, un papa, un obispo, un rey y una ciudad. Quienes estudian el cuadro lo leen como un encuentro entre la Virgen y la montaña, y esa no es la única lectura. Este es el lienzo de la Casa de la Moneda. Hay otro parecido en el Museo Nacional de Arte de La Paz, y no es este.",
+    "description": "Óleo anónimo de hacia 1740, de unos 143 por 110 centímetros, conservado en la Casa Nacional de la Moneda de Potosí. La silueta de la Virgen es el Cerro Rico. El manto dibuja la montaña. Arriba se ven el sol, la luna y la Trinidad, y abajo un papa, un obispo, un rey y una ciudad. Esa escena se ha leído como un encuentro entre la Virgen y el cerro, y no es la única lectura.",
+    "cryptDescription": "La Virgen del Cerro es un óleo anónimo del siglo XVIII, fechado hacia 1740. Mide cerca de 143 por 110 centímetros y se guarda en la Casa Nacional de la Moneda de Potosí. El manto de la Virgen dibuja el Cerro Rico. Arriba se ven el sol, la luna y la Trinidad. Abajo, un papa, un obispo, un rey y una ciudad. Quienes estudian el cuadro lo leen como un encuentro entre la Virgen y la montaña, y esa no es la única lectura. Este es el lienzo de la Casa de la Moneda. Hay otro parecido en el Museo Nacional de Arte de La Paz, y no es este.\n\nLa visita lo encuentra en esta casa. El cuadro parecido de La Paz es otra pintura y no forma parte del recorrido.",
     "imageUrl": "assets/images/casa/virgen.jpg",
     "imageUrl2": "assets/images/casa/virgen.jpg",
     "extraImages": [
@@ -29,8 +29,8 @@
     "id": "DD:20:87:F7:72:14",
     "name": "El Mascarón",
     "name2": "Primer patio",
-    "description": "Máscara del primer patio de la Casa Nacional de la Moneda. La colocó en 1865 el grabador francés Eugenio Martin Moulon. Lleva una corona de uvas.",
-    "cryptDescription": "El Mascarón cuelga en el primer patio de la Casa Nacional de la Moneda, sobre un arco. En 1865 lo puso allí Eugenio Martin Moulon, un francés que grababa los cuños de la ceca. La corona de racimos ha hecho que muchos lo llamen Baco. También se lo ha leído como una burla a la codicia. La casa no fija una sola historia: la máscara está en el patio y esas son las lecturas que la acompañan.",
+    "description": "Máscara del primer patio de la Casa Nacional de la Moneda. La colocó en 1865 el grabador francés Eugenio Martin Moulon. Lleva una corona de uvas. Cuelga sobre un arco. Unos lo llaman Baco por esa corona y otros lo leen como una burla a la codicia. Las dos lecturas conviven.",
+    "cryptDescription": "El Mascarón cuelga en el primer patio de la Casa Nacional de la Moneda, sobre un arco. En 1865 lo puso allí Eugenio Martin Moulon, un francés que grababa los cuños de la ceca. La corona de racimos ha hecho que muchos lo llamen Baco. También se lo ha leído como una burla a la codicia. La casa no fija una sola historia: la máscara está en el patio y esas son las lecturas que la acompañan.\n\nQuien entra al primer patio lo encuentra sobre el arco, donde Moulon lo dejó en 1865. La casa no pide elegir entre Baco y la burla.",
     "imageUrl": "assets/images/casa/mascaron.jpg",
     "imageUrl2": "assets/images/casa/mascaron-patio.jpg",
     "extraImages": [
@@ -56,8 +56,8 @@
   {
     "id": "OBJ005",
     "name": "Máquina de Laminado",
-    "description": "Máquina de laminado de la Casa Nacional de Moneda de Potosí. La ceca comenzó a funcionar en 1572. El edificio que se visita hoy se construyó entre 1759 y 1773. Esta máquina preparaba la plata en láminas antes de acuñar las monedas.",
-    "cryptDescription": "La Casa Nacional de Moneda de Potosí empezó a labrar moneda en 1572.\n\nEl edificio que se visita hoy se levantó entre 1759 y 1773.\n\nLa máquina de laminado preparaba los lingotes de plata en láminas antes del golpe de acuñación.",
+    "description": "Máquina de laminado de la Casa Nacional de Moneda de Potosí. La ceca comenzó a funcionar en 1572. El edificio que se visita hoy se construyó entre 1759 y 1773. Esta máquina preparaba la plata en láminas antes de acuñar las monedas. Los lingotes pasaban por sus rodillos y salían en láminas, listos para el golpe del cuño.",
+    "cryptDescription": "La Casa Nacional de Moneda de Potosí empezó a labrar moneda en 1572.\n\nEl edificio que se visita hoy se levantó entre 1759 y 1773.\n\nLa máquina de laminado preparaba los lingotes de plata en láminas antes del golpe de acuñación.\n\nEntre el lingote y la moneda había esa lámina. La máquina forma parte del trabajo de la ceca, en el edificio de 1759 a 1773.",
     "imageUrl": "assets/images/item5/intem5.jpg",
     "extraImages": [
       "assets/images/item5/intem5.jpg",

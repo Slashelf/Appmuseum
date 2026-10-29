@@ -1278,10 +1278,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: GuideRoutes.talk),
-        builder: (_) => VoiceConversationScreen(
-          ear: widget.ear,
-          speaker: widget.speaker,
-        ),
+        builder: (_) => const VoiceConversationScreen(),
       ),
     );
   }

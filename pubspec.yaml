@@ -67,6 +67,9 @@ dependencies:
   speech_to_text: ^7.4.0
   flutter_tts: ^4.2.5
   flutter_secure_storage: 9.2.4
+  rive: ^0.14.11
+  record: ^6.2.1
+  flutter_pcm_sound: ^3.3.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -107,6 +110,7 @@ flutter:
     - assets/images/casa/
     - assets/images/
     - assets/audio/
+    - assets/rive/
 
   fonts:
     - family: Poppins

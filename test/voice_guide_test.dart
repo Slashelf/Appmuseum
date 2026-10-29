@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:app_guia_v1/chat/chat_controller.dart';
@@ -7,6 +8,8 @@ import 'package:app_guia_v1/chat/chat_message.dart';
 import 'package:app_guia_v1/chat/chat_voice.dart';
 import 'package:app_guia_v1/chat/conversation_store.dart';
 import 'package:app_guia_v1/chat/xai_speech.dart';
+import 'package:app_guia_v1/chat/xai_realtime.dart';
+
 import 'package:app_guia_v1/chat/guide_narrator.dart';
 import 'package:app_guia_v1/chat/knowledge_source.dart';
 import 'package:app_guia_v1/chat/local_guide_answer_service.dart';
@@ -22,6 +25,73 @@ import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('the voice agent sends ara or leo, the guide instructions, and hides the key', () {
+    const secret = 'sk-testsecret';
+    final woman = XaiRealtime.sessionUpdate(
+      instructions: 'Eres el guía. personalidad aburrida.',
+      voice: 'ara',
+      languageCode: 'es',
+    );
+    final session = woman['session'] as Map;
+    expect(XaiRealtime.endpoint.toString(), 'wss://api.x.ai/v1/realtime?model=grok-voice-latest');
+    expect(session['voice'], 'ara');
+    expect(session['instructions'], contains('personalidad aburrida'));
+    expect((session['turn_detection'] as Map)['type'], 'server_vad');
+    expect((session['reasoning'] as Map)['effort'], 'none');
+    final audio = session['audio'] as Map;
+    expect(((audio['input'] as Map)['format'] as Map)['rate'], 24000);
+    expect(((audio['input'] as Map)['transcription'] as Map)['language_hint'], 'es-MX');
+    expect(XaiRealtime.sessionUpdate(instructions: 'x', voice: 'leo', languageCode: 'en')['session'], isA<Map>());
+    final man = XaiRealtime.sessionUpdate(instructions: 'x', voice: 'leo', languageCode: 'en')['session'] as Map;
+    expect(man['voice'], 'leo');
+    expect(((man['audio'] as Map)['input'] as Map)['transcription'], {'language_hint': 'en'});
+    expect(XaiRealtime.languageHint('de'), 'de');
+    expect(XaiRealtime.languageHint('pt'), 'pt-BR');
+    expect(XaiRealtime.voiceId('otra'), 'ara');
+
+    final spoken = XaiRealtime.say('Veo que llegaste.', 'es');
+    final item = spoken.first['item'] as Map;
+    final content = (item['content'] as List).first as Map;
+    expect(content['text'], contains('Veo que llegaste.'));
+    expect(content['text'], contains('Di exactamente'));
+    expect(spoken.last['type'], 'response.create');
+    expect(XaiRealtime.ask('Cuéntame esta exhibición.').first['item'], isA<Map>());
+    expect(XaiRealtime.cancel()['type'], 'response.cancel');
+    final payload = jsonEncode(woman);
+    expect(payload, isNot(contains(secret)));
+
+    final notice = XaiRealtime.interpret({
+      'type': 'error',
+      'error': {'code': 'invalid_api_key', 'message': 'Incorrect API key $secret'},
+    }, secret: secret);
+    expect(notice.kind, XaiVoiceNoticeKind.failed);
+    expect(notice.failure!.status, 401);
+    expect(notice.failure!.detail, isNot(contains(secret)));
+    expect(
+      XaiRealtime.interpret({
+        'type': 'response.output_audio.delta',
+        'delta': base64Encode(Uint8List.fromList([1, 0])),
+      }).kind,
+      XaiVoiceNoticeKind.guideAudio,
+    );
+    expect(
+      XaiRealtime.interpret({'type': 'response.audio.delta', 'delta': base64Encode(Uint8List.fromList([2, 0]))}).audio,
+      isNotNull,
+    );
+    expect(XaiRealtime.statusOf('HTTP status code: 429'), 429);
+    expect(
+      XaiVoiceFailure.from(const SocketException('offline'), secret).offline,
+      isTrue,
+    );
+    expect(
+      XaiVoiceFailure.from(
+        WebSocketException('was not upgraded, HTTP status code: 403'),
+        secret,
+      ).status,
+      403,
+    );
+  });
+
   test('a short hello stays open until the rest of the sentence arrives', () {
     final turn = VoiceTurn();
     turn.hear('hola');

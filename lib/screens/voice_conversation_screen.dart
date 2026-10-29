@@ -1,24 +1,22 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_controller.dart';
-import '../chat/chat_message.dart';
-import '../chat/chat_voice.dart';
-import '../chat/guide_narrator.dart';
+import '../chat/chat_faq.dart';
+import '../chat/remote_guide_answer_service.dart';
 import '../chat/visit_context.dart';
-import '../chat/voice_turn.dart';
+import '../chat/xai_realtime.dart';
 import '../core/locale/locale_controller.dart';
 import '../core/theme/app_theme.dart';
+import '../widgets/guide_orb.dart';
 import 'app_localizations.dart';
 
 Future<bool> voiceNetworkReachable() async {
   try {
-    final result = await InternetAddress.lookup('api.x.ai')
-        .timeout(const Duration(seconds: 3));
+    final result = await InternetAddress.lookup('api.x.ai').timeout(const Duration(seconds: 3));
     return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
   } catch (_) {
     return false;
@@ -88,61 +86,51 @@ VoiceSwitchChoice voiceSwitchChoice(String text) {
   return keepAt <= nextAt ? VoiceSwitchChoice.keep : VoiceSwitchChoice.next;
 }
 
-/// Conversación por voz a pantalla completa. Usa la misma exhibición y el mismo chat.
+/// Conversación por voz a pantalla completa. El agente escucha y responde con voz.
 class VoiceConversationScreen extends StatefulWidget {
-  final ChatEar? ear;
-  final ChatSpeaker? speaker;
+  final XaiVoiceSession? session;
   final Future<bool> Function()? online;
-  final Future<void> Function(String sentence, String languageCode)? onSpeak;
-  final Future<void> Function()? onStop;
+  final Widget Function(BuildContext context, GuideOrbMood mood)? character;
 
   const VoiceConversationScreen({
     super.key,
-    this.ear,
-    this.speaker,
+    this.session,
     this.online,
-    this.onSpeak,
-    this.onStop,
+    this.character,
   });
 
   @override
   State<VoiceConversationScreen> createState() => _VoiceConversationScreenState();
 }
 
-class _VoiceConversationScreenState extends State<VoiceConversationScreen>
-    with SingleTickerProviderStateMixin {
-  ChatEar? _ownedEar;
-  GuideNarrator? _narrator;
-  late final AnimationController _pulse;
-  Timer? _silence;
-  Timer? _idle;
+class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
+  XaiVoiceSession? _owned;
+  XaiVoiceSession? _session;
+  Timer? _errorFace;
+  Timer? _think;
   VoicePhase _phase = VoicePhase.listening;
+  GuideOrbMood _mood = GuideOrbMood.idle;
   bool _muted = false;
   bool _offline = false;
-  bool _replyOpen = false;
-  bool _starting = false;
-  bool _ignoreEar = false;
-  int _pendingClips = 0;
-  int _playGen = 0;
-  double _level = 0;
-  String _userLine = '';
-  String _guideLine = '';
-  bool _phoneVoice = false;
+  bool _alive = false;
+  bool _opening = false;
+  bool _scripted = false;
+  bool _stored = false;
   bool _switchAsk = false;
+  bool _resolving = false;
   String? _boundPlaceId;
   String _heldSpeech = '';
+  String _scriptUser = '';
+  String _userLine = '';
+  String _guideLine = '';
   VisitContext? _visit;
-  final VoiceTurn _turn = VoiceTurn();
-  int _emptyStops = 0;
-  int _listenGen = 0;
+  int _generation = 0;
 
-  ChatEar get _ear => widget.ear ?? (_ownedEar ??= DeviceChatEar());
+  XaiVoiceSession get _voice => _session ??= widget.session ?? (_owned = XaiRealtimeVoice());
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
-      ..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) => _open());
   }
 
@@ -159,29 +147,34 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   @override
   void dispose() {
     _visit?.removeListener(_onExhibition);
-    _silence?.cancel();
-    _idle?.cancel();
-    _pulse.dispose();
-    final narrator = _narrator;
-    _narrator = null;
-    if (narrator != null) unawaited(narrator.dispose());
-    if (_ownedEar != null) {
-      _ear.cancel();
-    }
+    _errorFace?.cancel();
+    _think?.cancel();
+    _generation++;
+    final session = _session;
+    _clearHooks(session);
+    if (_owned != null) unawaited(_owned!.close());
     super.dispose();
   }
 
-  GuideNarrator _voice(ChatSpeaker speaker) {
-    final narrator = _narrator ??= GuideNarrator(fallback: speaker);
-    narrator.onPhoneVoice = (_) {
-      if (!mounted) return;
-      setState(() => _phoneVoice = true);
-    };
-    narrator.onRemoteVoice = () {
-      if (!mounted || !_phoneVoice) return;
-      setState(() => _phoneVoice = false);
-    };
-    return narrator;
+  void _clearHooks(XaiVoiceSession? session) {
+    if (session == null) return;
+    session.onVisitor = null;
+    session.onVisitorText = null;
+    session.onVisitorStopped = null;
+    session.onGuideStart = null;
+    session.onGuideText = null;
+    session.onGuideDone = null;
+    session.onFailure = null;
+  }
+
+  void _bind(XaiVoiceSession session) {
+    session.onVisitor = _onVisitor;
+    session.onVisitorText = _onVisitorText;
+    session.onVisitorStopped = _onVisitorStopped;
+    session.onGuideStart = _onGuideStart;
+    session.onGuideText = _onGuideText;
+    session.onGuideDone = _onGuideDone;
+    session.onFailure = _onFailure;
   }
 
   Future<bool> _reach() {
@@ -193,411 +186,360 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   Future<void> _open() async {
+    if (!mounted || _opening || _alive) return;
+    _opening = true;
+    final generation = ++_generation;
     final online = await _reach();
-    if (!mounted) return;
+    if (!mounted || generation != _generation) {
+      _opening = false;
+      return;
+    }
     if (!online) {
       setState(() {
         _offline = true;
         _phase = VoicePhase.paused;
+        _mood = GuideOrbMood.idle;
       });
+      _opening = false;
       return;
     }
-    await _beginListen();
-  }
-
-  Future<void> _beginListen({bool keepWords = false}) async {
-    if (!mounted || _muted || _offline) return;
-    if (!keepWords &&
-        _phase == VoicePhase.listening &&
-        _turn.isEmpty &&
-        _idle != null &&
-        _pendingClips == 0 &&
-        !_starting) {
-      return;
-    }
-    final generation = ++_listenGen;
-    _starting = true;
-    if (!keepWords) {
-      _silence?.cancel();
-      _turn.reset();
-      _level = 0;
-      _emptyStops = 0;
-    }
-    _ignoreEar = true;
-    try {
-      await _ear.stop();
-    } catch (_) {}
-    _ignoreEar = false;
-    if (!mounted || _muted || generation != _listenGen) {
-      if (generation == _listenGen) _starting = false;
-      return;
-    }
-    setState(() => _phase = VoicePhase.listening);
+    final chat = context.read<ChatController>();
     final language = context.read<LocaleController>().locale.languageCode;
-    final ready = await _ear.prepare(onStatus: _onStatus, onError: _onEarError);
-    if (!mounted || _muted || generation != _listenGen) {
-      if (generation == _listenGen) _starting = false;
-      return;
-    }
-    if (!ready) {
-      _starting = false;
+    if (chat.speechKey.isEmpty) {
       setState(() {
         _offline = false;
         _phase = VoicePhase.paused;
+        _mood = GuideOrbMood.error;
+        _guideLine = ChatFaq.missingKey(language);
+      });
+      _restAfterError();
+      _opening = false;
+      return;
+    }
+    final session = _voice;
+    _bind(session);
+    try {
+      final instructions = await chat.voiceInstructions(language);
+      if (!mounted || generation != _generation) return;
+      final started = await session.start(
+        apiKey: chat.speechKey,
+        instructions: instructions,
+        voice: chat.guideVoice,
+        languageCode: chat.replyLanguage(language),
+      );
+      if (!mounted || generation != _generation || !started) return;
+      _alive = true;
+      session.setMuted(_muted);
+      setState(() {
+        _offline = false;
+        _phase = VoicePhase.listening;
+        _mood = GuideOrbMood.idle;
+      });
+    } catch (error) {
+      if (mounted && generation == _generation) {
+        _onFailure(XaiVoiceFailure.from(error, chat.speechKey));
+      }
+    } finally {
+      _opening = false;
+    }
+  }
+
+  void _onVisitor(bool speaking) {
+    if (!mounted) return;
+    if (speaking && !_scripted) {
+      if (_phase == VoicePhase.speaking || _phase == VoicePhase.thinking) {
+        unawaited(_voice.interrupt());
+        if (!_switchAsk && !_stored) _remember();
+      }
+      if (_stored && !_switchAsk) {
+        _userLine = '';
+        _guideLine = '';
+      }
+    }
+    setState(() {
+      _mood = speaking ? GuideOrbMood.listen : _moodAfterVisitor();
+      if (speaking && _phase != VoicePhase.paused) _phase = VoicePhase.listening;
+    });
+  }
+
+  GuideOrbMood _moodAfterVisitor() {
+    if (_phase == VoicePhase.speaking) return GuideOrbMood.speak;
+    if (_phase == VoicePhase.thinking) return GuideOrbMood.idle;
+    return GuideOrbMood.idle;
+  }
+
+  void _onVisitorStopped() {
+    if (!mounted || _muted || _switchAsk || _scripted) return;
+    _think?.cancel();
+    _think = Timer(const Duration(seconds: 8), () {
+      if (!mounted || _phase != VoicePhase.thinking) return;
+      setState(() {
+        _phase = VoicePhase.listening;
+        _mood = GuideOrbMood.idle;
+      });
+    });
+    setState(() {
+      _phase = VoicePhase.thinking;
+      _mood = GuideOrbMood.idle;
+    });
+  }
+
+  void _onVisitorText(String text, {required bool replace, required bool ended}) {
+    if (!mounted || _muted) return;
+    final next = replace ? text : '$_userLine$text';
+    setState(() => _userLine = next);
+    _stored = false;
+    if (ended && _switchAsk) unawaited(_answerSwitch(next));
+  }
+
+  void _onGuideStart() {
+    if (!mounted) return;
+    _think?.cancel();
+    if (_scripted) {
+      setState(() {
+        _phase = VoicePhase.speaking;
+        _mood = GuideOrbMood.speak;
       });
       return;
     }
-    _starting = false;
-    try {
-      await _ear.listen(
-        onWords: _onWords,
-        onLevel: _onLevel,
-        localeId: _localeId(language),
-        options: voiceListenOptions(_localeId(language)),
-      );
-    } catch (_) {
-      if (mounted && generation == _listenGen) {
-        setState(() => _phase = VoicePhase.paused);
-      }
+    if (_switchAsk && _userLine.trim().isNotEmpty) {
+      unawaited(_answerSwitch(_userLine));
       return;
     }
-    if (generation != _listenGen) return;
-    if (!keepWords || _turn.isEmpty) _armIdle();
-  }
-
-  void _armIdle() {
-    _idle?.cancel();
-    _idle = Timer(voiceIdlePause, () {
-      if (!mounted || _phase != VoicePhase.listening || !_turn.isEmpty) return;
-      _silence?.cancel();
-      _ignoreEar = true;
-      _ear.stop();
-      _ignoreEar = false;
-      setState(() => _phase = VoicePhase.paused);
+    setState(() {
+      if (_stored) _guideLine = '';
+      _stored = false;
+      _phase = VoicePhase.speaking;
+      _mood = GuideOrbMood.speak;
     });
   }
 
-  void _onWords(String words, bool isFinal) {
-    if (!mounted || _phase != VoicePhase.listening || _muted) return;
-    if (words.trim().isEmpty) return;
-    _idle?.cancel();
-    _emptyStops = 0;
-    _turn.hear(words);
-    setState(() => _userLine = _turn.text);
-    _silence?.cancel();
-    _silence = Timer(VoiceTurn.endpoint, () {
-      final text = _turn.text.trim();
-      if (text.isEmpty || _phase != VoicePhase.listening) return;
-      _sendTurn(text);
+  void _onGuideText(String text, {required bool replace}) {
+    if (!mounted || _scripted) return;
+    _think?.cancel();
+    setState(() {
+      _phase = VoicePhase.speaking;
+      _mood = GuideOrbMood.speak;
+      _guideLine = replace ? text : '$_guideLine$text';
     });
   }
 
-  void _onLevel(double level) {
-    if (!mounted || _phase != VoicePhase.listening) return;
-    setState(() => _level = chatSoundLevel(level));
-  }
-
-  void _onStatus(String status) {
-    if (!mounted || _muted || _ignoreEar || _starting) return;
-    if (status != 'done' && status != 'notListening') return;
-    if (_phase != VoicePhase.listening) return;
-    _turn.engineStopped();
-    if (_turn.isEmpty) {
-      _emptyStops += 1;
-      if (_emptyStops >= VoiceTurn.retryLimit) {
-        _silence?.cancel();
-        _idle?.cancel();
-        setState(() => _phase = VoicePhase.paused);
-        return;
+  void _onGuideDone() {
+    if (!mounted) return;
+    _think?.cancel();
+    final chat = context.read<ChatController>();
+    if (_scripted) {
+      final line = _guideLine.trim();
+      final asked = _scriptUser.trim();
+      _scripted = false;
+      _scriptUser = '';
+      if (asked.isNotEmpty) {
+        chat.rememberExchange(asked, line);
+        _stored = true;
+      } else if (_switchAsk && line.isNotEmpty) {
+        chat.rememberExchange('', line);
+        _stored = true;
       }
     } else {
-      _emptyStops = 0;
-      setState(() => _userLine = _turn.text);
+      _remember();
     }
-    _beginListen(keepWords: true);
+    if (_phase == VoicePhase.paused || _offline) return;
+    setState(() {
+      _phase = VoicePhase.listening;
+      _mood = GuideOrbMood.idle;
+    });
   }
 
-  void _onEarError() {
-    if (!mounted || _muted || _ignoreEar || _starting) return;
-    if (_phase != VoicePhase.listening) return;
-    if (_turn.noteError()) {
-      _beginListen(keepWords: true);
+  void _onFailure(XaiVoiceFailure failure) {
+    if (!mounted) return;
+    _think?.cancel();
+    _alive = false;
+    _scripted = false;
+    _switchAsk = false;
+    _resolving = false;
+    if (failure.offline) {
+      setState(() {
+        _offline = true;
+        _phase = VoicePhase.paused;
+        _mood = GuideOrbMood.idle;
+      });
       return;
     }
-    _silence?.cancel();
-    _idle?.cancel();
-    _listenGen++;
-    setState(() => _phase = VoicePhase.paused);
-    _ear.stop();
+    final chat = context.read<ChatController>();
+    final language = context.read<LocaleController>().locale.languageCode;
+    final shown = failure.microphone
+        ? AppLocalizations.of(context).get('voiceMicDenied')
+        : RemoteGuideAnswerService.visibleError(
+            failure.status,
+            DeepSeekLog.safe(failure.detail, chat.speechKey),
+          );
+    if (_userLine.trim().isNotEmpty && shown.isNotEmpty) {
+      chat.rememberExchange(_userLine, shown);
+      _stored = true;
+    }
+    setState(() {
+      _offline = false;
+      _phase = VoicePhase.paused;
+      _mood = GuideOrbMood.error;
+      if (shown.isNotEmpty) _guideLine = shown;
+    });
+    _restAfterError();
+  }
+
+  void _restAfterError() {
+    _errorFace?.cancel();
+    _errorFace = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || _mood != GuideOrbMood.error) return;
+      setState(() => _mood = GuideOrbMood.idle);
+    });
+  }
+
+  void _remember() {
+    if (_stored || !mounted) return;
+    final asked = _userLine.trim();
+    final reply = _guideLine.trim();
+    if (asked.isEmpty && reply.isEmpty) return;
+    context.read<ChatController>().rememberExchange(asked, reply);
+    _stored = true;
   }
 
   void _onExhibition() {
     if (!mounted) return;
     final next = _visit?.place?.id;
-    if (next == _boundPlaceId) return;
-    if (_switchAsk) return;
-    final speaking = _phase == VoicePhase.speaking ||
-        _phase == VoicePhase.thinking ||
-        _pendingClips > 0 ||
-        _replyOpen;
+    if (next == _boundPlaceId || _switchAsk) return;
+    final speaking = _phase == VoicePhase.speaking || _phase == VoicePhase.thinking;
     if (!speaking) {
       _boundPlaceId = next;
+      unawaited(_rebind());
       return;
     }
     _switchAsk = true;
     _heldSpeech = _guideLine.trim();
-    unawaited(_cutForSwitch());
+    _remember();
+    _userLine = '';
+    _stored = true;
+    unawaited(_speakScript(AppLocalizations.of(context).get('voiceSwitchAsk')));
   }
 
-  Future<void> _cutForSwitch() async {
-    try {
-      await widget.onStop?.call();
-    } catch (_) {}
-    await _narrator?.stop();
-    if (!mounted || !_switchAsk) return;
-    final t = AppLocalizations.of(context);
+  Future<void> _rebind() async {
+    if (!mounted || !_alive) return;
+    final chat = context.read<ChatController>();
     final language = context.read<LocaleController>().locale.languageCode;
-    final speech = context.read<ChatController>().replyLanguage(language);
-    await _speakLine(t.get('voiceSwitchAsk'), speech);
+    final instructions = await chat.voiceInstructions(language);
+    if (!mounted || !_alive) return;
+    await _voice.update(
+      instructions: instructions,
+      voice: chat.guideVoice,
+      languageCode: chat.replyLanguage(language),
+    );
   }
 
-  String _speechToResume(ChatController chat) {
-    final held = _heldSpeech.trim();
-    if (chat.messages.isEmpty) return held;
-    final last = chat.messages.last;
-    if (last.role != ChatRole.guide) return held;
-    final stored = last.text.trim();
-    if (stored.length > held.length) return stored;
-    return held;
+  Future<void> _speakScript(String line, {String asUser = ''}) async {
+    final spoken = line.trim();
+    if (spoken.isEmpty || !mounted) return;
+    _scripted = true;
+    _scriptUser = asUser;
+    _stored = false;
+    setState(() {
+      _phase = VoicePhase.speaking;
+      _mood = GuideOrbMood.speak;
+      _guideLine = spoken;
+    });
+    await _voice.interrupt();
+    if (!mounted) return;
+    await _voice.say(spoken);
   }
 
   Future<void> _answerSwitch(String text) async {
+    if (!mounted || !_switchAsk || _resolving) return;
+    _resolving = true;
     final choice = voiceSwitchChoice(text);
     final t = AppLocalizations.of(context);
-    final language = context.read<LocaleController>().locale.languageCode;
     final chat = context.read<ChatController>();
-    final speech = chat.replyLanguage(language);
     if (choice == VoiceSwitchChoice.unclear) {
-      await _speakLine(t.get('voiceSwitchAsk'), speech);
+      _resolving = false;
+      await _speakScript(t.get('voiceSwitchAsk'));
       return;
     }
     _switchAsk = false;
+    _resolving = false;
     _boundPlaceId = _visit?.place?.id;
     if (choice == VoiceSwitchChoice.keep) {
-      final held = _speechToResume(chat);
-      await _speakLine(
+      final held = _heldSpeech.trim();
+      await _speakScript(
         held.isEmpty ? t.get('voiceSwitchEmpty') : held,
-        speech,
+        asUser: text,
       );
       return;
     }
-    await _sendTurn(t.get('voiceSwitchNew'));
-  }
-
-  Future<void> _speakLine(String line, String speech) async {
-    final spoken = line.trim();
-    if (spoken.isEmpty) return;
-    _silence?.cancel();
-    _idle?.cancel();
-    _turn.reset();
-    final generation = ++_playGen;
-    _listenGen++;
+    await _rebind();
+    if (!mounted) return;
+    final question = t.get('voiceSwitchNew');
+    _scripted = false;
+    _stored = false;
     setState(() {
-      _phase = VoicePhase.speaking;
-      _guideLine = spoken;
-    });
-    _ignoreEar = true;
-    try {
-      await _ear.stop();
-    } catch (_) {}
-    _ignoreEar = false;
-    if (!mounted || generation != _playGen) return;
-    _pendingClips++;
-    await _play(spoken, speech, generation);
-  }
-
-  Future<void> _sendTurn(String text) async {
-    if (_replyOpen || _phase == VoicePhase.thinking || _phase == VoicePhase.speaking) return;
-    if (_switchAsk) {
-      await _answerSwitch(text);
-      return;
-    }
-    _silence?.cancel();
-    _idle?.cancel();
-    _turn.reset();
-    _emptyStops = 0;
-    _replyOpen = true;
-    final generation = ++_playGen;
-    _listenGen++;
-    setState(() {
-      _phase = VoicePhase.thinking;
-      _userLine = text;
+      _userLine = question;
       _guideLine = '';
-      _offline = false;
+      _phase = VoicePhase.thinking;
+      _mood = GuideOrbMood.idle;
     });
-    _ignoreEar = true;
-    try {
-      await _ear.stop();
-    } catch (_) {}
-    _ignoreEar = false;
-    if (!mounted || generation != _playGen) {
-      _replyOpen = false;
-      return;
-    }
-    final online = await _reach();
-    if (!mounted || generation != _playGen) {
-      _replyOpen = false;
-      return;
-    }
-    if (!online) {
-      _replyOpen = false;
-      setState(() {
-        _offline = true;
-        _phase = VoicePhase.paused;
-      });
-      return;
-    }
-    final chat = context.read<ChatController>();
-    final language = context.read<LocaleController>().locale.languageCode;
-    final speech = chat.replyLanguage(language);
-    final t = AppLocalizations.of(context);
-    if (widget.onSpeak == null) {
-      final speaker = widget.speaker ?? DeviceChatSpeaker();
-      _voice(speaker).beginReply();
-    }
-    await chat.submit(
-      text,
-      languageCode: language,
-      noDataText: t.get('chatNoData'),
-      aiUnavailableText: t.get('aiUnavailable'),
-      spoken: true,
-      fromVoice: true,
-      dialogueLimit: 4,
-      onSentence: (sentence) {
-        if (!mounted || generation != _playGen) return;
-        if (_switchAsk) {
-          final extra = sentence.trim();
-          if (extra.isEmpty) return;
-          _heldSpeech = _heldSpeech.isEmpty ? extra : '$_heldSpeech $extra';
-          return;
-        }
-        _pendingClips++;
-        setState(() {
-          _phase = VoicePhase.speaking;
-          _guideLine = _guideLine.isEmpty ? sentence : '$_guideLine $sentence';
-        });
-        _play(sentence, speech, generation);
-      },
-    );
-    _replyOpen = false;
-    if (!mounted || generation != _playGen) return;
-    if (chat.tookOffline) {
-      setState(() {
-        _offline = true;
-        _phase = VoicePhase.paused;
-      });
-      return;
-    }
-    if (_pendingClips == 0) _afterSpeech(generation);
-  }
-
-  Future<void> _play(String sentence, String language, int generation) async {
-    try {
-      if (widget.onSpeak != null) {
-        await widget.onSpeak!(sentence, language);
-      } else {
-        final chat = context.read<ChatController>();
-        await chat.ensureNarratorVoice();
-        if (!mounted || generation != _playGen) return;
-        final speaker = widget.speaker ?? DeviceChatSpeaker();
-        final narrator = _voice(speaker);
-        narrator.onIdle = () {
-          _pendingClips = 0;
-          _afterSpeech(generation);
-        };
-        narrator.enqueue(
-          sentence,
-          languageCode: language,
-          apiKey: () => chat.speechKey,
-          voiceId: () => chat.guideVoice,
-        );
-        return;
-      }
-    } catch (_) {}
-    if (!mounted || generation != _playGen) return;
-    _pendingClips = math.max(0, _pendingClips - 1);
-    if (_pendingClips == 0 && !_replyOpen) _afterSpeech(generation);
-  }
-
-  void _afterSpeech(int generation) {
-    if (!mounted || generation != _playGen || _replyOpen || _muted || _offline) return;
-    if (_pendingClips > 0) return;
-    if (_narrator != null && _narrator!.busy) return;
-    if (_phase == VoicePhase.paused) return;
-    _beginListen();
+    await _voice.interrupt();
+    if (!mounted) return;
+    await _voice.ask(question);
   }
 
   Future<void> _interrupt() async {
-    _playGen++;
-    _pendingClips = 0;
-    _replyOpen = false;
-    _silence?.cancel();
-    _guideLine = _guideLine;
-    try {
-      await widget.onStop?.call();
-    } catch (_) {}
-    await _narrator?.stop();
+    _generation++;
+    _think?.cancel();
+    final pending = _switchAsk;
+    _switchAsk = false;
+    _scripted = false;
+    _resolving = false;
+    _remember();
+    await _voice.interrupt();
+    if (pending) {
+      _boundPlaceId = _visit?.place?.id;
+      await _rebind();
+    }
     if (!mounted) return;
-    await _beginListen();
+    setState(() {
+      _phase = VoicePhase.listening;
+      _mood = GuideOrbMood.idle;
+    });
   }
 
   Future<void> _toggleMute() async {
     _muted = !_muted;
-    if (_muted) {
-      _silence?.cancel();
-      _idle?.cancel();
-      try {
-        await _ear.stop();
-      } catch (_) {}
-    } else if (_phase != VoicePhase.speaking && _phase != VoicePhase.thinking) {
-      await _beginListen();
-    }
+    _voice.setMuted(_muted);
     if (mounted) setState(() {});
   }
 
   Future<void> _exit() async {
-    _playGen++;
-    _silence?.cancel();
-    _idle?.cancel();
-    try {
-      await widget.onStop?.call();
-    } catch (_) {}
-    await _narrator?.stop();
-    try {
-      await _ear.cancel();
-    } catch (_) {}
+    _generation++;
+    _think?.cancel();
+    _errorFace?.cancel();
+    _remember();
+    await _voice.interrupt();
+    if (_owned != null) await _owned!.close();
+    _alive = false;
     if (mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
   }
 
   Future<void> _resumeFromPause() async {
-    final online = await _reach();
-    if (!mounted) return;
-    if (!online) {
-      setState(() {
-        _offline = true;
-        _phase = VoicePhase.paused;
-      });
+    _muted = false;
+    _offline = false;
+    if (!_alive) {
+      await _open();
       return;
     }
-    setState(() => _offline = false);
-    _muted = false;
-    await _beginListen();
-  }
-
-  String _localeId(String language) {
-    return context.read<ChatController>().earLocale(language);
+    _voice.setMuted(false);
+    if (!mounted) return;
+    setState(() {
+      _phase = VoicePhase.listening;
+      _mood = GuideOrbMood.idle;
+    });
   }
 
   String _statusLabel(AppLocalizations t) {
@@ -620,6 +562,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     final place = context.watch<ChatController>().visit.place?.localized(language);
     final placeName = (place?.name.trim().isNotEmpty ?? false) ? place!.name : place?.name2;
     final status = _statusLabel(t);
+    final character = widget.character?.call(context, _mood) ?? GuideOrb(mood: _mood);
 
     return Scaffold(
       backgroundColor: GuidePalette.background,
@@ -649,16 +592,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                     color: GuidePalette.accent,
                   ),
                 ),
-              if (_phoneVoice)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    t.get('phoneVoiceNotice'),
-                    key: const Key('voice-phone-notice'),
-                    textAlign: TextAlign.center,
-                    style: AppFonts.poppins(fontSize: 12, color: GuidePalette.muted),
-                  ),
-                ),
               if (_offline)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -681,21 +614,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                     _interrupt();
                   }
                 },
-                child: AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (context, child) {
-                    return CustomPaint(
-                      painter: MuseumOrbPainter(
-                        phase: _phase,
-                        pulse: _pulse.value,
-                        level: _level,
-                      ),
-                      child: const SizedBox(width: 220, height: 220),
-                    );
-                  },
-                ),
+                child: SizedBox(width: 220, height: 220, child: character),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 6),
+              Text(
+                t.get('voiceOrbCredit'),
+                key: const Key('voice-orb-credit'),
+                textAlign: TextAlign.center,
+                style: AppFonts.poppins(fontSize: 11, color: GuidePalette.muted),
+              ),
+              const SizedBox(height: 12),
               if (status.isNotEmpty)
                 Text(
                   status,
@@ -741,124 +669,5 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         ),
       ),
     );
-  }
-}
-
-/// Orbe de la pantalla Hablar. El azul vive solo aquí: la paleta del museo no tiene azul.
-class MuseumOrbPainter extends CustomPainter {
-  static const Color night = Color(0xFF14283F);
-  static const Color blue = Color(0xFF3E6FA3);
-
-  final VoicePhase phase;
-  final double pulse;
-  final double level;
-
-  const MuseumOrbPainter({
-    required this.phase,
-    required this.pulse,
-    required this.level,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) return;
-    final center = Offset(size.width / 2, size.height / 2);
-    final turn = pulse.clamp(0.0, 1.0);
-    final volume = level.clamp(0.0, 1.0);
-    final base = size.width * 0.26;
-
-    canvas.drawCircle(
-      center,
-      size.width * 0.42,
-      Paint()..color = night.withValues(alpha: 0.92),
-    );
-
-    if (phase == VoicePhase.thinking) {
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(turn * math.pi * 2);
-      canvas.translate(-center.dx, -center.dy);
-      final glow = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 8
-        ..strokeCap = StrokeCap.round
-        ..color = GuidePalette.accent.withValues(alpha: 0.55)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: base + 22),
-        -0.4,
-        2.1,
-        false,
-        glow,
-      );
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: base + 34),
-        2.2,
-        1.3,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..strokeCap = StrokeCap.round
-          ..color = blue.withValues(alpha: 0.9),
-      );
-      canvas.restore();
-    }
-
-    if (phase == VoicePhase.speaking) {
-      for (var i = 0; i < 3; i++) {
-        final wave = (turn * 2 + i / 3) % 1.0;
-        canvas.drawCircle(
-          center,
-          base + 14 + wave * 48,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2.2
-            ..color = (i.isEven ? GuidePalette.accent : GuidePalette.ink)
-                .withValues(alpha: (1 - wave) * 0.62),
-        );
-      }
-    }
-
-    final listening = phase == VoicePhase.listening;
-    final radius = base * (listening ? 1 + volume * 0.34 : 1 + math.sin(turn * math.pi * 2) * 0.03);
-    final outline = Path();
-    const steps = 56;
-    for (var i = 0; i <= steps; i++) {
-      final angle = (i / steps) * math.pi * 2;
-      final wobble = listening ? 1 + volume * 0.09 * math.sin(angle * 5 + volume * 6) : 1.0;
-      final point = Offset(
-        center.dx + math.cos(angle) * radius * wobble,
-        center.dy + math.sin(angle) * radius * wobble,
-      );
-      if (i == 0) {
-        outline.moveTo(point.dx, point.dy);
-      } else {
-        outline.lineTo(point.dx, point.dy);
-      }
-    }
-    outline.close();
-    canvas.drawPath(
-      outline,
-      Paint()
-        ..shader = RadialGradient(
-          colors: const [
-            Color(0xFFF3E6C4),
-            GuidePalette.accent,
-            blue,
-          ],
-          stops: const [0.0, 0.46, 1.0],
-        ).createShader(Rect.fromCircle(center: center, radius: radius)),
-    );
-    canvas.drawCircle(
-      Offset(center.dx - radius * 0.28, center.dy - radius * 0.32),
-      radius * 0.16,
-      Paint()..color = GuidePalette.ink.withValues(alpha: 0.38),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant MuseumOrbPainter oldDelegate) {
-    return oldDelegate.phase != phase || oldDelegate.pulse != pulse || oldDelegate.level != level;
   }
 }

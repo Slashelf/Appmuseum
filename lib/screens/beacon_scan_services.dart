@@ -130,10 +130,10 @@ class BeaconServiceFlutter {
     await _requestBlePermissions();
 
     try {
-      final hasPermissions = await _beaconsPlugin.checkPermissions();
+      var hasPermissions = await _beaconsPlugin.checkPermissions();
       if (!hasPermissions) {
-        final granted = await _beaconsPlugin.requestPermissions();
-        if (!granted) {
+        hasPermissions = await _beaconsPlugin.requestPermissions();
+        if (!hasPermissions) {
           _onStartFailed(permissionsDenied: true, error: 'permission');
           return;
         }
@@ -150,7 +150,11 @@ class BeaconServiceFlutter {
         onDone: () => _onScanLost(generation),
       );
 
-      final started = await _requestNativeScan();
+      var started = await _requestNativeScan();
+      if (!started && !_radioUnderTest && enabled && !_holding) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        if (enabled && !_holding) started = await _requestNativeScan();
+      }
       await _applyNativeStart(started);
     } catch (error) {
       await _scanSubscription?.cancel();
@@ -208,6 +212,7 @@ class BeaconServiceFlutter {
   /// Pide los permisos de Bluetooth. La decisión final sigue siendo la del
   /// plugin, que es la que ya abre los lugares.
   Future<void> _requestBlePermissions() async {
+    if (_radioUnderTest) return;
     try {
       final permissions = Platform.isIOS
           ? <Permission>[Permission.bluetooth, Permission.locationWhenInUse]

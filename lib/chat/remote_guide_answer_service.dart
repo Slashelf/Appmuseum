@@ -17,7 +17,7 @@ class RemoteGuideAnswerService implements GuideAnswerService {
   final GuideAnswerService fallback;
 
   static const endpoint = 'https://api.x.ai/v1/responses';
-  static const model = 'grok-4.7';
+  static const model = 'grok-4.20-0309-non-reasoning';
 
   /// La pregunta más los tres mensajes anteriores.
   static const maxDialogueMessages = 4;
@@ -196,7 +196,7 @@ class RemoteGuideAnswerService implements GuideAnswerService {
   }
 
   DeepSeekException _failure(int status, String raw) {
-    final detail = DeepSeekLog.safe(_short(raw), apiKey);
+    final detail = DeepSeekLog.safe(_errorText(raw), apiKey);
     return DeepSeekException(
       credit: DeepSeekLog.credit(status, raw),
       status: status,
@@ -204,7 +204,32 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     );
   }
 
-  static String _short(String raw) {
+  /// Código y mensaje, sin la clave. Sirve para mostrarlo en pantalla.
+  static String visibleError(int? status, String detail) {
+    final code = status == null || status == 0 ? '' : '$status ';
+    return '$code${detail.trim()}'.trim();
+  }
+
+  static String _errorText(String raw) {
+    final compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        final error = decoded['error'];
+        if (error is Map) {
+          final code = error['code']?.toString().trim() ?? '';
+          final message = error['message']?.toString().trim() ?? '';
+          final line = [code, message].where((part) => part.isNotEmpty).join(' ');
+          if (line.isNotEmpty) return _clip(line);
+        }
+        final message = decoded['message']?.toString().trim() ?? '';
+        if (message.isNotEmpty) return _clip(message);
+      }
+    } catch (_) {}
+    return _clip(compact);
+  }
+
+  static String _clip(String raw) {
     final compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (compact.length <= 180) return compact;
     return compact.substring(0, 180);
@@ -219,6 +244,27 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     }
     if (blocks.isEmpty) return 'Sin ficha coincidente.';
     return blocks.join('\n\n');
+  }
+
+  /// Las mismas instrucciones del chat, en la forma corta que usa la voz.
+  static String instructionsFor({
+    required String languageCode,
+    required List<KnowledgeSnippet> snippets,
+    String placeName = '',
+    String summary = '',
+  }) {
+    final where = placeName.trim().isNotEmpty
+        ? placeName.trim()
+        : snippets.isEmpty
+            ? 'ninguna exhibición elegida'
+            : snippets.first.title.trim();
+    return _systemPrompt(
+      placeName: where.isEmpty ? 'ninguna exhibición elegida' : where,
+      officialData: _officialData(snippets),
+      summary: summary,
+      spoken: true,
+      languageCode: languageCode,
+    );
   }
 
   /// `output_text` y, si falta, el texto dentro de `output`.

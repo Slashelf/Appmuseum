@@ -183,6 +183,16 @@ class ChatController extends ChangeNotifier {
     _saveSecret(elevenKeyStorageKey, elevenRuntimeKey);
   }
 
+  /// Guarda lo que el modo hablar ya dijo, sin volver a llamar al modelo de texto.
+  void rememberExchange(String question, String answer) {
+    final asked = question.trim();
+    final reply = answer.trim();
+    if (asked.isNotEmpty) store.add(ChatMessage.visitor(asked));
+    if (reply.isNotEmpty) store.add(ChatMessage.guide(reply));
+    if (asked.isEmpty && reply.isEmpty) return;
+    notifyListeners();
+  }
+
   void updateVoiceId(String value) {
     final next = value.trim();
     if (next == elevenVoiceId) return;
@@ -221,6 +231,22 @@ class ChatController extends ChangeNotifier {
 
   /// Voz de Grok ya elegida. No consulta otra red.
   Future<String> ensureNarratorVoice() async => guideVoice;
+
+  /// Las mismas instrucciones del chat, con la exhibición que el beacon tiene ahora.
+  Future<String> voiceInstructions(String languageCode) async {
+    final speech = replyLanguage(languageCode);
+    final snippets = await knowledge.search(
+      question: visit.place?.name ?? '',
+      languageCode: speech,
+      currentPlaceId: visit.place?.id,
+    );
+    return RemoteGuideAnswerService.instructionsFor(
+      languageCode: speech,
+      snippets: snippets,
+      placeName: _placeName(speech),
+      summary: _memory.text,
+    );
+  }
 
   Future<void> setMicLanguage(String value) async {
     const allowed = {'auto', 'es', 'en', 'pt'};
@@ -270,8 +296,10 @@ class ChatController extends ChangeNotifier {
     }
 
     if (ChatFaq.isSpam(trimmed) || ChatFaq.isOffTopic(trimmed)) {
-      store.add(ChatMessage.guide(ChatFaq.offTopicReply(languageCode)));
+      final reply = ChatFaq.offTopicReply(languageCode);
+      store.add(ChatMessage.guide(reply));
       notifyListeners();
+      onSentence?.call(reply);
       return;
     }
 
@@ -345,6 +373,13 @@ class ChatController extends ChangeNotifier {
       debugPrint('DeepSeek: ${DeepSeekLog.safe('$error', remote!.apiKey)}');
       if (error is DeepSeekException && error.credit) {
         return ChatFaq.noCredit(languageCode);
+      }
+      if (error is DeepSeekException) {
+        final shown = RemoteGuideAnswerService.visibleError(
+          error.status,
+          DeepSeekLog.safe(error.detail, remote!.apiKey),
+        );
+        if (shown.isNotEmpty) return shown;
       }
       if (_isOffline(error)) tookOffline = true;
       return ChatFaq.couldNotConnect(languageCode);

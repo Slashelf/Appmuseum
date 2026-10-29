@@ -62,6 +62,7 @@ Future<void> main() async {
     secrets: SecureGuideSecretStore(),
     connections: HttpConnectionChecker(),
   );
+  await chat.restoreSaved();
 
   runApp(
     MultiProvider(

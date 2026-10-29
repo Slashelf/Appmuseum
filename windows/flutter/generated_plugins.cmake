@@ -10,6 +10,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   objectbox_flutter_libs
   permission_handler_windows
+  record_windows
+  rive_native
   speech_to_text_windows
   url_launcher_windows
 )

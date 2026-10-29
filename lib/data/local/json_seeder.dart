@@ -9,7 +9,7 @@ import '../../models/object_model.dart';
 import '../../models/recommended_model.dart';
 
 class JsonSeeder {
-  static const seedVersion = '4';
+  static const seedVersion = '5';
 
   final Database database;
 

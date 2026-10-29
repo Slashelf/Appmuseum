@@ -120,7 +120,7 @@ void main() {
     expect(body['temperature'], 0.7);
     expect(body['max_output_tokens'], 450);
     expect(body.containsKey('thinking'), isFalse);
-    expect(body['model'], 'grok-4.7');
+    expect(body['model'], 'grok-4.20-0309-non-reasoning');
     final dialogue = body['input'] as List;
     expect(dialogue, hasLength(4));
     expect(dialogue.first['content'], 'respuesta 7');
@@ -182,7 +182,7 @@ void main() {
     expect(spokenSystem, contains('Exhibición actual'));
     expect(spokenSystem, contains('2 o 3 frases como máximo'));
     expect(spokenSystem.startsWith(quietSystem), isTrue);
-    expect(spoken['model'], 'grok-4.7');
+    expect(spoken['model'], 'grok-4.20-0309-non-reasoning');
     expect(spoken['max_output_tokens'], 300);
     expect(quiet['max_output_tokens'], 450);
     expect(quiet['temperature'], 0.7);

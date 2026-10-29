@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:app_guia_v1/chat/chat_controller.dart';
 import 'package:app_guia_v1/chat/chat_faq.dart';
@@ -16,6 +15,8 @@ import 'package:app_guia_v1/chat/local_knowledge_source.dart';
 import 'package:app_guia_v1/chat/remote_guide_answer_service.dart';
 import 'package:app_guia_v1/chat/visit_context.dart';
 import 'package:app_guia_v1/chat/visit_memory.dart';
+import 'package:app_guia_v1/chat/xai_realtime.dart';
+import 'package:app_guia_v1/widgets/guide_orb.dart';
 import 'package:app_guia_v1/core/locale/locale_controller.dart';
 import 'package:app_guia_v1/core/theme/app_theme.dart';
 import 'package:app_guia_v1/data/content_repository.dart';
@@ -28,6 +29,7 @@ import 'package:app_guia_v1/screens/chat_screen.dart';
 import 'package:app_guia_v1/screens/guide_settings_screen.dart';
 import 'package:app_guia_v1/screens/voice_conversation_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:rive/rive.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -437,15 +439,19 @@ void main() {
     await chat.submit('dolor de cabeza', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
     expect(chat.messages.last.text, contains('pagan'));
+    final spoken = <String>[];
     await chat.submit(
       'dolor de cabeza',
       languageCode: 'es',
       noDataText: noData,
       spoken: true,
       fromVoice: true,
+      onSentence: spoken.add,
     );
     expect(remote.calls, 0);
     expect(chat.messages.last.text, contains('pagan'));
+    expect(spoken, hasLength(1));
+    expect(spoken.single, contains('pagan'));
     await chat.submit('cuentame un chiste', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
     await chat.submit('¿Cómo estás?', languageCode: 'es', noDataText: noData);
@@ -1520,26 +1526,38 @@ void main() {
     expect(voice.messages, hasLength(1));
     expect(voice.messages.single.text, 'cuando se fundo');
     voice.dispose();
+
+    const secret = 'sk-testsecret';
+    final denied = _chat(
+      [place],
+      visit: VisitContext()..updatePlace(place),
+      remote: _ErrorRemote(
+        const DeepSeekException(credit: false, status: 401, detail: 'Incorrect API key sk-testsecret'),
+      ),
+    );
+    denied.runtimeKey = secret;
+    denied.remote!.apiKey = secret;
+    await denied.submit('¿Cuándo fue fundada?', languageCode: 'es', noDataText: noData);
+    expect(denied.messages.last.text, contains('401'));
+    expect(denied.messages.last.text, contains('Incorrect'));
+    expect(denied.messages.last.text, isNot(contains(secret)));
+    denied.dispose();
   });
 
-  testWidgets('the voice screen cycles, pauses, and leaves the chat', (tester) async {
-    final ear = _FakeEar();
+  testWidgets('the voice screen uses the saved key and the voice agent', (tester) async {
+    final voice = _FakeVoice();
     final remote = _ScriptedRemote();
     final place = _place('sf', 'Criptas de San Francisco', 'Las criptas del templo.');
+    const secret = 'clave-ajustes';
     final chat = _chat(
       [place],
       visit: VisitContext()..updatePlace(place),
       remote: remote,
     );
-    final spoken = <String>[];
-    final hang = Completer<void>();
+    chat.updateDeepSeekKey(secret);
     SharedPreferences.setMockInitialValues({});
 
-    Future<void> show(
-      Future<void> Function(String sentence, String languageCode)? onSpeak, {
-      required bool online,
-      required String name,
-    }) {
+    Future<void> show({required bool online, required String name}) {
       return tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -1557,20 +1575,13 @@ void main() {
             supportedLocales: const [Locale('es'), Locale('en'), Locale('de')],
             home: VoiceConversationScreen(
               key: ValueKey(name),
-              ear: ear,
+              session: voice,
               online: () async => online,
-              onSpeak: onSpeak,
+              character: (context, mood) => Text(mood.name, key: const Key('voice-mood')),
             ),
           ),
         ),
       );
-    }
-
-    Future<void> untilListening(int count) async {
-      for (var i = 0; i < 20 && ear.listens < count; i++) {
-        await tester.pump();
-      }
-      await tester.pump();
     }
 
     Future<void> untilReady(bool Function() ready) async {
@@ -1579,64 +1590,67 @@ void main() {
       }
     }
 
-    await show(null, online: false, name: 'offline');
+    await show(online: false, name: 'offline');
     await untilReady(() => find.byKey(const Key('voice-offline')).evaluate().isNotEmpty);
     expect(find.byKey(const Key('voice-offline')), findsOneWidget);
     expect(find.text('Sin internet. La conversación por voz necesita conexión.'), findsOneWidget);
-    expect(ear.listens, 0);
+    expect(voice.starts, 0);
     expect(remote.calls, 0);
     expect(AppLocalizations(const Locale('en')).get('voiceTapToContinue'), 'Tap to continue');
     expect(AppLocalizations(const Locale('de')).get('voiceOffline'), contains('Internet'));
 
-    await show((sentence, language) async => spoken.add(sentence), online: true, name: 'online');
-    await untilListening(1);
-    expect(find.text('Exhibición: Criptas de San Francisco'), findsOneWidget);
-    expect(find.byKey(const Key('voice-offline')), findsNothing);
-    expect(ear.listens, 1);
-    expect(ear.options?.pauseFor, chatListenLimit);
-    expect(ear.options?.cancelOnError, isFalse);
+    chat.runtimeKey = '';
+    await show(online: true, name: 'missing');
+    await untilReady(() => find.textContaining('Falta la clave').evaluate().isNotEmpty);
+    expect(voice.starts, 0);
+    expect(find.textContaining('Falta la clave'), findsOneWidget);
 
-    ear.onWords?.call('cuando se fundo', false);
+    chat.updateDeepSeekKey(secret);
+    await show(online: true, name: 'online');
+    await untilReady(() => voice.starts >= 1 && find.text('Escuchando').evaluate().isNotEmpty);
+    expect(voice.starts, 1);
+    expect(voice.apiKey, secret);
+    expect(voice.apiKey, chat.speechKey);
+    expect(remote.apiKey, secret);
+    expect(voice.voice, 'ara');
+    expect(voice.instructions, contains('Casa Nacional de la Moneda'));
+    expect(voice.instructions, contains('personalidad aburrida'));
+    expect(voice.instructions, contains('Criptas de San Francisco'));
+    expect(remote.calls, 0);
+    expect(find.text('idle'), findsOneWidget);
+    expect(find.text('Personaje de aln.omrv, CC BY.'), findsOneWidget);
+
+    voice.onVisitor?.call(true);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 2400));
-    await untilReady(() => remote.calls >= 1 && spoken.isNotEmpty);
-    expect(remote.calls, 1);
-    expect(remote.lastLimit, 4);
-    expect(chat.messages.first.text, 'cuando se fundo');
-    expect(spoken, ['respuesta de la guia']);
+    expect(find.text('listen'), findsOneWidget);
+
+    voice.onVisitorText?.call('cuando se fundo', replace: true, ended: true);
+    voice.onGuideStart?.call();
+    voice.onGuideText?.call('La casa se fundó.', replace: false);
+    await tester.pump();
+    expect(find.text('Hablando'), findsOneWidget);
+    expect(find.text('speak'), findsOneWidget);
     expect(find.byKey(const Key('voice-user-line')), findsOneWidget);
     expect(find.byKey(const Key('voice-guide-line')), findsOneWidget);
 
-    final afterReply = ear.listens;
-    await untilListening(afterReply + 1);
-    await tester.pump(const Duration(seconds: 20));
-    expect(find.text('Toca para seguir'), findsWidgets);
-
-    final before = remote.calls;
-    final beforeListen = ear.listens;
-    await show((sentence, language) => hang.future, online: true, name: 'interrupt');
-    await untilListening(beforeListen + 1);
-    ear.onWords?.call('otra pregunta', false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 2400));
-    await untilReady(() => remote.calls > before && find.text('Hablando').evaluate().isNotEmpty);
-    expect(remote.calls, before + 1);
-    expect(find.text('Hablando'), findsOneWidget);
-    final speakingOrb = tester.widget<CustomPaint>(find.descendant(
-      of: find.byKey(const Key('voice-sphere')),
-      matching: find.byType(CustomPaint),
-    ));
-    expect((speakingOrb.painter as MuseumOrbPainter).phase, VoicePhase.speaking);
     await tester.tap(find.byKey(const Key('voice-sphere')));
     await untilReady(() => find.text('Escuchando').evaluate().isNotEmpty);
-    expect(find.text('Escuchando'), findsOneWidget);
-    final listeningOrb = tester.widget<CustomPaint>(find.descendant(
-      of: find.byKey(const Key('voice-sphere')),
-      matching: find.byType(CustomPaint),
-    ));
-    expect((listeningOrb.painter as MuseumOrbPainter).phase, VoicePhase.listening);
-    hang.complete();
+    expect(find.text('idle'), findsOneWidget);
+    expect(voice.interrupts, greaterThan(0));
+
+    voice.onGuideStart?.call();
+    voice.onGuideText?.call('Sigue el relato.', replace: true);
+    voice.onGuideDone?.call();
     await tester.pump();
+    expect(chat.messages.last.text, contains('relato'));
+
+    voice.onFailure?.call(const XaiVoiceFailure(status: 401, detail: 'Incorrect API key clave-ajustes'));
+    await tester.pump();
+    expect(find.textContaining('401'), findsOneWidget);
+    expect(find.textContaining('clave-ajustes'), findsNothing);
+    expect(find.text('error'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('idle'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('voice-exit')));
     await tester.pump();
@@ -1645,10 +1659,17 @@ void main() {
     chat.dispose();
   });
 
-  testWidgets('talk mode keeps listening after hola and a dropped ear', (tester) async {
-    final ear = _FakeEar();
-    final remote = _ScriptedRemote();
-    final chat = _chat([], remote: remote);
+  testWidgets('talk mode asks before leaving an exhibition and keeps the man voice', (tester) async {
+    final voice = _FakeVoice();
+    final first = _place('virgen', 'La Virgen del Cerro', 'Óleo del cerro.');
+    final second = _place('mascaron', 'El Mascarón', 'Máscara del patio.');
+    final visit = VisitContext()..updatePlace(first);
+    final chat = _chat(
+      [first, second],
+      visit: visit,
+      compiledKey: 'clave-ajustes',
+    );
+    chat.updateVoiceId('leo');
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(
@@ -1667,67 +1688,67 @@ void main() {
           ],
           supportedLocales: const [Locale('es'), Locale('en'), Locale('de')],
           home: VoiceConversationScreen(
-            ear: ear,
+            session: voice,
             online: () async => true,
-            onSpeak: (sentence, language) async {},
+            character: (context, mood) => Text(mood.name, key: const Key('voice-mood')),
           ),
         ),
       ),
     );
 
-    Future<void> untilListening(int count) async {
-      for (var i = 0; i < 20 && ear.listens < count; i++) {
+    Future<void> untilReady(bool Function() ready) async {
+      for (var i = 0; i < 30 && !ready(); i++) {
         await tester.pump();
       }
     }
 
-    await untilListening(1);
-    expect(ear.listens, 1);
+    await untilReady(() => voice.starts == 1);
+    expect(voice.voice, 'leo');
+    expect(voice.instructions, contains('La Virgen del Cerro'));
 
-    ear.onWords?.call('hola', false);
+    visit.updatePlace(second);
+    await untilReady(() => voice.updates.isNotEmpty);
+    expect(voice.said, isEmpty);
+    expect(voice.updates.last, contains('El Mascarón'));
+
+    visit.updatePlace(first);
+    await untilReady(() => voice.updates.length >= 2);
+    voice.onGuideStart?.call();
+    voice.onGuideText?.call('El manto dibuja el cerro.', replace: true);
     await tester.pump();
-    ear.onStatus?.call('done');
-    await untilListening(2);
-    expect(remote.calls, 0);
-    expect(find.text('hola'), findsOneWidget);
+    expect(find.text('Hablando'), findsOneWidget);
 
-    ear.onWords?.call('cuando se fundo', false);
-    await tester.pump(const Duration(milliseconds: 1000));
-    expect(remote.calls, 0);
-    await tester.pump(const Duration(milliseconds: 1400));
-    for (var i = 0; i < 20 && remote.calls < 1; i++) {
-      await tester.pump();
-    }
-    expect(remote.calls, 1);
-    expect(chat.messages.first.text, 'hola cuando se fundo');
+    visit.updatePlace(second);
+    await untilReady(() => voice.said.isNotEmpty);
+    expect(voice.said.last, contains('otra exhibición'));
+    expect(find.textContaining('otra exhibición'), findsOneWidget);
 
-    await untilListening(ear.listens + 1);
-    final beforeErrors = ear.listens;
-    ear.onError?.call();
-    await untilListening(beforeErrors + 1);
-    expect(find.text('Toca para seguir'), findsNothing);
-    ear.onError?.call();
-    await untilListening(beforeErrors + 2);
-    ear.onError?.call();
-    await tester.pump();
-    expect(find.text('Toca para seguir'), findsWidgets);
+    voice.onVisitorText?.call('quiero la nueva', replace: true, ended: true);
+    await untilReady(() => voice.asked.isNotEmpty);
+    expect(voice.asked.single, 'Cuéntame esta exhibición.');
+    expect(voice.updates.last, contains('El Mascarón'));
     chat.dispose();
   });
 
-  test('the museum orb paints listen, think, and speak', () {
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    const size = Size(220, 220);
-    final listening = MuseumOrbPainter(phase: VoicePhase.listening, pulse: 0.2, level: 0.85);
-    final thinking = MuseumOrbPainter(phase: VoicePhase.thinking, pulse: 0.6, level: 0);
-    final speaking = MuseumOrbPainter(phase: VoicePhase.speaking, pulse: 0.3, level: 0);
-    listening.paint(canvas, size);
-    thinking.paint(canvas, size);
-    speaking.paint(canvas, size);
-    expect(listening.shouldRepaint(thinking), isTrue);
-    expect(thinking.shouldRepaint(speaking), isTrue);
-    expect(speaking.shouldRepaint(MuseumOrbPainter(phase: VoicePhase.speaking, pulse: 0.3, level: 0)), isFalse);
-    recorder.endRecording().dispose();
+  test('the orb binds listen, jump and error, and does not invent a greeting', () {
+    final names = OrbPropertyNames.detect(const [
+      ViewModelProperty('typingBoolean', DataType.boolean),
+      ViewModelProperty('loadingBoolean', DataType.boolean),
+      ViewModelProperty('jump', DataType.trigger),
+      ViewModelProperty('wrong', DataType.trigger),
+      ViewModelProperty('correct', DataType.trigger),
+      ViewModelProperty('Reveal9', DataType.trigger),
+    ]);
+    expect(names.listen, 'typingBoolean');
+    expect(names.speak, 'jump');
+    expect(names.error, 'wrong');
+    expect(names.greet, isNull);
+
+    final hello = OrbPropertyNames.detect(const [
+      ViewModelProperty('typingBoolean', DataType.boolean),
+      ViewModelProperty('hello', DataType.trigger),
+    ]);
+    expect(hello.greet, 'hello');
   });
 
   test('plain preference keys move into the secret store', () async {
@@ -2254,6 +2275,85 @@ class _FakeRepository implements ContentRepository {
 
   @override
   Future<void> savePendingComment(PendingComment comment) async {}
+}
+
+class _FakeVoice implements XaiVoiceSession {
+  String apiKey = '';
+  String instructions = '';
+  String voice = '';
+  int starts = 0;
+  int interrupts = 0;
+  final said = <String>[];
+  final asked = <String>[];
+  final updates = <String>[];
+
+  @override
+  void Function(bool speaking)? onVisitor;
+
+  @override
+  void Function(String text, {required bool replace, required bool ended})? onVisitorText;
+
+  @override
+  void Function()? onVisitorStopped;
+
+  @override
+  void Function()? onGuideStart;
+
+  @override
+  void Function(String text, {required bool replace})? onGuideText;
+
+  @override
+  void Function()? onGuideDone;
+
+  @override
+  void Function(XaiVoiceFailure failure)? onFailure;
+
+  @override
+  Future<bool> start({
+    required String apiKey,
+    required String instructions,
+    required String voice,
+    required String languageCode,
+  }) async {
+    starts += 1;
+    this.apiKey = apiKey;
+    this.instructions = instructions;
+    this.voice = voice;
+    return true;
+  }
+
+  @override
+  Future<void> update({
+    required String instructions,
+    required String voice,
+    required String languageCode,
+  }) async {
+    updates.add(instructions);
+    this.voice = voice;
+  }
+
+  @override
+  Future<void> say(String text) async {
+    said.add(text);
+    onGuideStart?.call();
+    onGuideDone?.call();
+  }
+
+  @override
+  Future<void> ask(String text) async {
+    asked.add(text);
+  }
+
+  @override
+  Future<void> interrupt() async {
+    interrupts += 1;
+  }
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  void setMuted(bool muted) {}
 }
 
 class _FakeEar implements ChatEar {
