@@ -118,6 +118,18 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     setState(() {});
     _scrollToBottomNow();
+    final t = AppLocalizations.of(context);
+    try {
+      await BeaconServiceFlutter().ensureScan(
+        permissionDeniedMessage: t.get('blePermissionDenied'),
+        onMessage: (message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        },
+      );
+    } catch (_) {}
   }
 
   @override
@@ -854,6 +866,17 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                   ),
+                  if (!_sending && !_holding && !_locked && !_listening)
+                    IconButton(
+                      key: const Key('chat-talk'),
+                      tooltip: t.get('voiceTalk'),
+                      onPressed: () => _openVoice(chat),
+                      style: IconButton.styleFrom(
+                        backgroundColor: GuidePalette.ink,
+                        foregroundColor: GuidePalette.white,
+                      ),
+                      icon: const Icon(Icons.graphic_eq),
+                    ),
                   if (_listening && !_holding && !_locked) ...[
                     const SizedBox(width: 6),
                     _MicBars(level: _level),
@@ -1045,12 +1068,6 @@ class _ChatScreenState extends State<ChatScreen> {
           label: t.get('micLanguage'),
         ),
         GuideMenuItem(
-          key: const Key('chat-talk'),
-          value: 'talk',
-          icon: Icons.mic_none,
-          label: t.get('voiceTalk'),
-        ),
-        GuideMenuItem(
           key: const Key('chat-stop-audio'),
           value: 'stop',
           icon: Icons.stop_circle_outlined,
@@ -1094,8 +1111,6 @@ class _ChatScreenState extends State<ChatScreen> {
         await _saveBool(autoSendKey, next);
       case 'mic':
         await _pickMicLanguage(chat);
-      case 'talk':
-        await _openVoice(chat);
       case 'stop':
         await _stopAudio();
       case 'settings':

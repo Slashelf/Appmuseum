@@ -1126,6 +1126,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-talk')), findsOneWidget);
+    expect(find.byTooltip('Hablar'), findsOneWidget);
     await tester.tap(find.byKey(const Key('chat-menu')));
     await tester.pumpAndSettle();
     final menu = tester.widget<PopupMenuButton<String>>(find.byKey(const Key('chat-menu')));
@@ -1135,14 +1137,7 @@ void main() {
     final autoItem = tester.widget<GuideMenuItem>(find.byKey(const Key('chat-auto-send')));
     expect(voiceItem.checked, isFalse);
     expect(autoItem.checked, isFalse);
-    expect(
-      find.descendant(of: find.byKey(const Key('chat-talk')), matching: find.byIcon(Icons.mic_none)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: find.byKey(const Key('chat-talk')), matching: find.text('Hablar')),
-      findsOneWidget,
-    );
+    expect(find.text('Hablar'), findsNothing);
     await tester.tap(find.byKey(const Key('chat-mode-chatbot')));
     await tester.pumpAndSettle();
 
