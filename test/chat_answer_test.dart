@@ -1646,6 +1646,14 @@ void main() {
     expect(find.text('idle'), findsOneWidget);
     expect(voice.interrupts, greaterThan(0));
 
+    voice.onFailure?.call(
+      const XaiVoiceFailure(detail: 'response_cancel_not_active no active response'),
+    );
+    await tester.pump();
+    expect(find.textContaining('no active response'), findsNothing);
+    expect(find.text('Escuchando'), findsOneWidget);
+    expect(find.text('error'), findsNothing);
+
     voice.onGuideStart?.call();
     voice.onGuideText?.call('Sigue el relato.', replace: true);
     voice.onGuideDone?.call();
@@ -1776,9 +1784,10 @@ void main() {
     expect(voice.instructions, contains('La Virgen del Cerro'));
 
     visit.updatePlace(second);
-    await untilReady(() => voice.updates.isNotEmpty);
+    await untilReady(() => voice.updates.isNotEmpty && voice.asked.isNotEmpty);
     expect(voice.said, isEmpty);
     expect(voice.updates.last, contains('El Mascarón'));
+    expect(voice.asked.last, 'Cuéntame esta exhibición.');
 
     visit.updatePlace(first);
     await untilReady(() => voice.updates.length >= 2);
@@ -1793,9 +1802,42 @@ void main() {
     expect(find.textContaining('otra exhibición'), findsOneWidget);
 
     voice.onVisitorText?.call('quiero la nueva', replace: true, ended: true);
-    await untilReady(() => voice.asked.isNotEmpty);
-    expect(voice.asked.single, 'Cuéntame esta exhibición.');
+    await untilReady(() => voice.asked.length >= 3);
+    expect(voice.asked.last, 'Cuéntame esta exhibición.');
     expect(voice.updates.last, contains('El Mascarón'));
+
+    visit.updatePlace(null);
+    await untilReady(() => voice.said.any((line) => line.contains('En ninguna')));
+    expect(voice.updates.last, contains('ninguna exhibición'));
+    expect(find.textContaining('En ninguna por el momento'), findsOneWidget);
+    chat.dispose();
+  });
+
+  testWidgets('written chat learns an exhibition as soon as the beacon changes', (tester) async {
+    final first = _place('virgen', 'La Virgen del Cerro', 'Óleo del cerro.');
+    final second = _place('mascaron', 'El Mascarón', 'Máscara del patio.');
+    final visit = VisitContext();
+    final remote = _ScriptedRemote();
+    final chat = _chat([first, second], visit: visit, remote: remote, compiledKey: 'clave');
+    SharedPreferences.setMockInitialValues({});
+    await _showChat(tester, chat);
+    await tester.pumpAndSettle();
+    expect(remote.calls, 0);
+
+    visit.updatePlace(first);
+    await tester.pumpAndSettle();
+    expect(remote.calls, 1);
+    expect(remote.lastPlace, 'La Virgen del Cerro');
+    expect(chat.messages.first.text, 'Cuéntame esta exhibición.');
+
+    visit.updatePlace(second);
+    await tester.pumpAndSettle();
+    expect(remote.lastPlace, 'El Mascarón');
+    expect(chat.messages[2].text, 'Cuéntame esta exhibición.');
+
+    visit.updatePlace(null);
+    await tester.pumpAndSettle();
+    expect(chat.messages.last.text, ChatFaq.noExhibitionNow);
     chat.dispose();
   });
 

@@ -188,6 +188,26 @@ class XaiRealtime {
     return 'Di exactamente esta frase y nada más:';
   }
 
+  /// Aviso de cortar o de interrumpir. No es un fallo de la API.
+  static bool benignCancel(String text) {
+    final blob = text.toLowerCase();
+    if (blob.isEmpty) return false;
+    const markers = <String>[
+      'response_cancel_not_active',
+      'no active response',
+      'cancellation failed',
+      'response.cancelled',
+      'response.canceled',
+      'response cancelled',
+      'response canceled',
+      'interrupt',
+    ];
+    for (final marker in markers) {
+      if (blob.contains(marker)) return true;
+    }
+    return false;
+  }
+
   static int? statusOf(String text) {
     final match = RegExp(
       r'(?:status(?:\s+code)?|http)\s*[:=]?\s*(\d{3})\b',
@@ -261,6 +281,7 @@ class XaiRealtime {
       message = error.trim();
     }
     if (message.isEmpty) message = event['message']?.toString().trim() ?? '';
+    if (benignCancel('$type $code $message')) return null;
     final detail = DeepSeekLog.safe(
       [code, message].where((part) => part.isNotEmpty).join(' '),
       secret,

@@ -19,29 +19,21 @@ void main() {
     const mac = 'D5:E0:59:B6:6F:C8';
 
     expect(confirm(session, mac, -40, start), isTrue);
-    expect(session.tryOpen(mac, -50, now: start.add(const Duration(seconds: 3))), isFalse);
+    expect(session.tryOpen(mac, -42, now: start.add(const Duration(seconds: 3))), isFalse);
 
     session.reading(
       keys: const [mac],
-      rssi: -70,
+      rssi: -42,
       now: start.add(const Duration(seconds: 5)),
     );
-    expect(session.tryOpen(mac, -56, now: start.add(const Duration(seconds: 5))), isFalse);
-
-    session.reading(
-      keys: const [mac],
-      rssi: -70,
-      now: start.add(const Duration(seconds: 14)),
-    );
     expect(session.open, contains(mac));
-    expect(session.tryOpen(mac, -56, now: start.add(const Duration(seconds: 14))), isFalse);
 
-    final gone = start.add(const Duration(seconds: 20));
-    session.reading(keys: const [mac], rssi: -90, now: gone);
+    final weak = start.add(const Duration(seconds: 6));
+    session.reading(keys: const [mac], rssi: -46, now: weak);
     expect(session.open, contains(mac));
-    session.reading(keys: const [mac], rssi: -90, now: gone.add(const Duration(seconds: 8)));
+    session.reading(keys: const [mac], rssi: -46, now: weak.add(const Duration(seconds: 8)));
     expect(session.open, isNot(contains(mac)));
-    expect(confirm(session, mac, -40, gone.add(const Duration(seconds: 9))), isTrue);
+    expect(confirm(session, mac, -40, weak.add(const Duration(seconds: 9))), isTrue);
   });
 
   test('a brief gap does not open the same beacon again', () {
@@ -62,7 +54,7 @@ void main() {
     final now = DateTime(2026, 10, 20, 12);
     expect(BeaconConfig.rssiNear, -40);
     expect(BeaconConfig.rssiEnter, -40);
-    expect(BeaconConfig.rssiExit, -80);
+    expect(BeaconConfig.rssiExit, -45);
     expect(BeaconConfig.confirmReadings, 1);
     expect(BeaconConfig.openCooldown, Duration.zero);
 
@@ -77,22 +69,22 @@ void main() {
     for (var second = 3; second <= 20; second += 2) {
       session.reading(
         keys: const ['NEAR'],
-        rssi: -70,
+        rssi: -42,
         now: now.add(Duration(seconds: second)),
       );
     }
     expect(session.open, contains('NEAR'));
 
     final away = now.add(const Duration(seconds: 22));
-    session.reading(keys: const ['NEAR'], rssi: -75, now: away);
-    session.reading(keys: const ['NEAR'], rssi: -75, now: away.add(const Duration(seconds: 8)));
+    session.reading(keys: const ['NEAR'], rssi: -44, now: away);
+    session.reading(keys: const ['NEAR'], rssi: -44, now: away.add(const Duration(seconds: 8)));
     expect(session.open, contains('NEAR'));
 
-    session.reading(keys: const ['NEAR'], rssi: -90, now: away.add(const Duration(seconds: 9)));
+    session.reading(keys: const ['NEAR'], rssi: -50, now: away.add(const Duration(seconds: 9)));
     expect(session.open, contains('NEAR'));
     session.reading(
       keys: const ['NEAR'],
-      rssi: -90,
+      rssi: -50,
       now: away.add(const Duration(seconds: 17)),
     );
     expect(session.open, isNot(contains('NEAR')));
@@ -198,8 +190,10 @@ void main() {
     final session = BeaconSession();
     final now = DateTime(2026, 10, 20, 12);
     session.commitExhibition('AA');
-    expect(session.consider('AA', -56, now, justOpened: false), ExhibitionChoice.same);
-    expect(session.consider('AA', -80, now, justOpened: false), ExhibitionChoice.same);
-    expect(session.consider('AA', -90, now, justOpened: false), ExhibitionChoice.ignore);
+    expect(session.consider('AA', -40, now, justOpened: false), ExhibitionChoice.same);
+    expect(session.consider('AA', -42, now, justOpened: false), ExhibitionChoice.same);
+    expect(session.consider('AA', -45, now, justOpened: false), ExhibitionChoice.same);
+    expect(session.consider('AA', -46, now, justOpened: false), ExhibitionChoice.ignore);
+    expect(session.consider('AA', -56, now, justOpened: false), ExhibitionChoice.ignore);
   });
 }

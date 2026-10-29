@@ -8,8 +8,8 @@ class BeaconConfig {
   /// Una lectura de -40 dBm, o más fuerte, abre el lugar.
   static const int rssiEnter = -40;
 
-  /// Sale si la señal se queda más floja que esto. Un bajón breve no cuenta.
-  static const int rssiExit = -80;
+  /// Más floja que esto, se deja la exhibición actual.
+  static const int rssiExit = -45;
 
   static const Duration signalGrace = Duration(seconds: 8);
 

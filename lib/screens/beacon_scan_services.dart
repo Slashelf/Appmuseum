@@ -274,6 +274,10 @@ class BeaconServiceFlutter {
       for (final key in openedKeys) {
         session.release(key);
       }
+      if (_belongsToCurrent(keys) && rssi < BeaconConfig.rssiExit) {
+        _loseExhibition();
+        return;
+      }
       if (choice == ExhibitionChoice.same && rssi >= BeaconConfig.rssiExit) {
         _armLoss();
       }
@@ -315,6 +319,8 @@ class BeaconServiceFlutter {
   }
 
   void _loseExhibition() {
+    _lostTimer?.cancel();
+    _lostTimer = null;
     if (_currentPlace == null && _currentKeys.isEmpty) return;
     session.dropExhibition(_currentKeys);
     _currentKeys.clear();
@@ -355,9 +361,23 @@ class BeaconServiceFlutter {
       justOpened: false,
       level: smoothed,
     );
-    if (choice == ExhibitionChoice.same && rssi >= BeaconConfig.rssiExit) {
+    if (rssi < BeaconConfig.rssiExit) {
+      _loseExhibition();
+      return;
+    }
+    if (choice == ExhibitionChoice.same) {
       _armLoss();
     }
+  }
+
+  bool _belongsToCurrent(List<String> keys) {
+    if (session.exhibitionKey != null && keys.contains(session.exhibitionKey)) {
+      return true;
+    }
+    for (final key in keys) {
+      if (_currentKeys.contains(key)) return true;
+    }
+    return false;
   }
 
   @visibleForTesting

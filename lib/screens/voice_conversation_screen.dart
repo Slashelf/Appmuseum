@@ -409,6 +409,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
   void _onFailure(XaiVoiceFailure failure) {
     if (!mounted || _away) return;
+    if (!failure.offline &&
+        !failure.microphone &&
+        XaiRealtime.benignCancel(failure.detail)) {
+      return;
+    }
     _think?.cancel();
     _alive = false;
     _scripted = false;
@@ -463,11 +468,21 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   void _onExhibition() {
     if (!mounted) return;
     final next = _visit?.place?.id;
-    if (next == _boundPlaceId || _switchAsk) return;
+    if (next == _boundPlaceId) return;
     final speaking = _phase == VoicePhase.speaking || _phase == VoicePhase.thinking;
-    if (!speaking) {
-      _boundPlaceId = next;
+    _boundPlaceId = next;
+    if (next == null) {
+      _switchAsk = false;
+      _resolving = false;
+      unawaited(_sayNoExhibition());
+      return;
+    }
+    if (_switchAsk) {
       unawaited(_rebind());
+      return;
+    }
+    if (!speaking) {
+      unawaited(_askCurrentExhibition());
       return;
     }
     _switchAsk = true;
@@ -475,7 +490,29 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _remember();
     _userLine = '';
     _stored = true;
-    unawaited(_speakScript(AppLocalizations.of(context).get('voiceSwitchAsk')));
+    unawaited(_askWhetherToSwitch());
+  }
+
+  Future<void> _sayNoExhibition() async {
+    await _rebind();
+    if (!mounted || !_alive) return;
+    final language = context.read<LocaleController>().locale.languageCode;
+    await _speakScript(ChatFaq.noExhibitionReply(language));
+  }
+
+  Future<void> _askCurrentExhibition() async {
+    await _rebind();
+    if (!mounted || !_alive) return;
+    final question = AppLocalizations.of(context).get('voiceSwitchNew');
+    _stored = false;
+    setState(() => _userLine = question);
+    await _voice.ask(question);
+  }
+
+  Future<void> _askWhetherToSwitch() async {
+    await _rebind();
+    if (!mounted || !_alive || !_switchAsk) return;
+    await _speakScript(AppLocalizations.of(context).get('voiceSwitchAsk'));
   }
 
   Future<void> _rebind() async {

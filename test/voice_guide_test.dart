@@ -72,6 +72,24 @@ void main() {
     expect(notice.failure!.detail, isNot(contains(secret)));
     expect(
       XaiRealtime.interpret({
+        'type': 'error',
+        'error': {
+          'code': 'response_cancel_not_active',
+          'message': 'Cancellation failed: no active response',
+        },
+      }).kind,
+      XaiVoiceNoticeKind.ignore,
+    );
+    expect(
+      XaiRealtime.interpret({
+        'type': 'error',
+        'error': {'message': 'no active response'},
+      }).kind,
+      XaiVoiceNoticeKind.ignore,
+    );
+    expect(XaiRealtime.benignCancel('response interrupted'), isTrue);
+    expect(
+      XaiRealtime.interpret({
         'type': 'response.output_audio.delta',
         'delta': base64Encode(Uint8List.fromList([1, 0])),
       }).kind,

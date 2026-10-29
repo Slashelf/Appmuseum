@@ -158,6 +158,22 @@ void main() {
     service.debugPrepare(scanEnabled: false, scanningNow: false, alive: false);
   });
 
+  test('a signal past the exit clears the exhibition at once', () {
+    final service = BeaconServiceFlutter();
+    service.debugSkipPlugin = true;
+    final seen = <ObjectModel?>[];
+    void listener(ObjectModel? place) => seen.add(place);
+    service.addPlaceListener(listener);
+    service.debugShow(_place('sf'), keys: const ['AA']);
+    service.debugHearCurrent(-42);
+    expect(seen.last?.id, 'sf');
+    service.debugHearCurrent(-46);
+    expect(seen.last, isNull);
+    expect(service.session.exhibitionKey, isNull);
+    service.removePlaceListener(listener);
+    service.session.clear();
+  });
+
   test('a beacon that is still heard does not clear after fifteen seconds', () {
     fakeAsync((async) {
       final service = BeaconServiceFlutter();

@@ -6,9 +6,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../chat/chat_controller.dart';
+import '../chat/chat_faq.dart';
 import '../chat/chat_message.dart';
 import '../chat/chat_voice.dart';
 import '../chat/guide_narrator.dart';
+import '../chat/visit_context.dart';
 import '../chat/local_exhibition_answers.dart';
 import '../core/locale/locale_controller.dart';
 import '../core/navigation/place_navigation.dart';
@@ -66,6 +68,8 @@ class _ChatScreenState extends State<ChatScreen> {
   String _heard = '';
   int? _speakingIndex;
   final GlobalKey _latestReplyKey = GlobalKey();
+  VisitContext? _watchedVisit;
+  String? _writtenPlaceId;
 
   ChatEar get _ear => widget.ear ?? (_ownedEar ??= DeviceChatEar());
 
@@ -84,6 +88,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _watchVisit();
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     final previous = _lastInset;
     _lastInset = inset;
@@ -132,8 +137,45 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
+  void _watchVisit() {
+    final visit = context.read<ChatController>().visit;
+    if (identical(_watchedVisit, visit)) return;
+    _watchedVisit?.removeListener(_onWrittenExhibition);
+    _watchedVisit = visit;
+    _writtenPlaceId = visit.place?.id;
+    visit.addListener(_onWrittenExhibition);
+  }
+
+  /// La exhibición cambió con el chat abierto. El modelo usa el lugar nuevo
+  /// y sale la pregunta que ya usa el modo hablar.
+  void _onWrittenExhibition() {
+    if (!mounted) return;
+    final next = _watchedVisit?.place?.id;
+    if (next == _writtenPlaceId) return;
+    _writtenPlaceId = next;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    final chat = context.read<ChatController>();
+    if (chat.mode != ChatAnswerMode.deepseek) return;
+    final language = context.read<LocaleController>().locale.languageCode;
+    if (next == null) {
+      chat.rememberExchange('', ChatFaq.noExhibitionReply(language));
+      if (_followBottom) _revealBottom();
+      return;
+    }
+    if (_listening || _holding || _locked) return;
+    final t = AppLocalizations.of(context);
+    if (_sending) {
+      chat.rememberExchange('', t.get('voiceSwitchAsk'));
+      if (_followBottom) _revealBottom();
+      return;
+    }
+    unawaited(_send(t.get('voiceSwitchNew'), true));
+  }
+
   @override
   void dispose() {
+    _watchedVisit?.removeListener(_onWrittenExhibition);
     _ignoreFinish = true;
     final wasListening = _listening;
     _listening = false;
@@ -151,7 +193,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _send([String? preset]) async {
+  Future<void> _send([String? preset, bool keepDraft = false]) async {
     final text = (preset ?? _input.text).trim();
     if (text.isEmpty || _sending) return;
     final chat = context.read<ChatController>();
@@ -170,8 +212,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (!mounted) return;
     setState(() => _sending = true);
-    _input.clear();
-    _heard = '';
+    if (!keepDraft) {
+      _input.clear();
+      _heard = '';
+    }
     // A new line follows the bottom only when the visitor was already there.
     if (_followBottom) _revealBottom();
     if (_conversation) _guideNarrator().beginReply();
@@ -871,11 +915,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       key: const Key('chat-talk'),
                       tooltip: t.get('voiceTalk'),
                       onPressed: () => _openVoice(chat),
-                      style: IconButton.styleFrom(
-                        backgroundColor: GuidePalette.ink,
-                        foregroundColor: GuidePalette.white,
-                      ),
-                      icon: const Icon(Icons.graphic_eq),
+                      icon: const Icon(Icons.graphic_eq, color: GuidePalette.muted),
                     ),
                   if (_listening && !_holding && !_locked) ...[
                     const SizedBox(width: 6),
