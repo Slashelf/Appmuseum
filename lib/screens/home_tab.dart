@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../core/navigation/place_navigation.dart';
 import '../core/theme/app_theme.dart';
@@ -18,12 +20,16 @@ class HomeTab extends StatefulWidget {
 class _HomeTabState extends State<HomeTab> {
   late Future<List<ObjectModel>> objectsFuture;
   late Future<List<RecommendedModel>> recommendedFuture;
+  late Future<List<String>> carouselFuture;
 
   @override
   void initState() {
     super.initState();
     objectsFuture = loadObjects();
     recommendedFuture = loadRecommendedObjects();
+    carouselFuture = loadObjectCarousel().then(
+      (carousel) => carousel?.images ?? const <String>[],
+    );
   }
 
   @override
@@ -45,17 +51,32 @@ class _HomeTabState extends State<HomeTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Image.asset(
-                    "assets/images/casa2.jpg",
-                    width: double.infinity,
-                    height: 250,
-                    fit: BoxFit.cover,
+                  FutureBuilder<List<String>>(
+                    future: carouselFuture,
+                    builder: (context, snapshot) {
+                      final images = (snapshot.data ?? const <String>[])
+                          .where((path) => path.trim().isNotEmpty)
+                          .toList();
+                      return _HouseCarousel(
+                        images: images.isEmpty
+                            ? const ['assets/images/casa/fachada.jpg']
+                            : images,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      t.get('photoCredit'),
+                      style: AppFonts.poppins(fontSize: 11, height: 1.3, color: GuidePalette.muted),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      t.get('homeBannerTitle') ?? 'Centro de Interpretación de la Cultura Funeraria',
+                      t.get('homeBannerTitle'),
                       style: AppFonts.display(
                         fontSize: 32,
                         color: GuidePalette.ink,
@@ -66,7 +87,7 @@ class _HomeTabState extends State<HomeTab> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      t.get('homeBannerSubtitle') ?? 'La Casa Nacional de Moneda de Potosí guarda la sala de Melchor Pérez de Holguín, la Brocha de Oro, con los evangelistas de 1724 y el San Francisco de Asís de 1694.',
+                      t.get('homeBannerSubtitle'),
                       style: AppFonts.poppins(fontSize: 15, height: 1.4, color: GuidePalette.muted),
                     ),
                   ),
@@ -202,6 +223,93 @@ class _HomeTabState extends State<HomeTab> {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fotos de la casa. Se puede deslizar y avanza sola.
+class _HouseCarousel extends StatefulWidget {
+  final List<String> images;
+
+  const _HouseCarousel({required this.images});
+
+  @override
+  State<_HouseCarousel> createState() => _HouseCarouselState();
+}
+
+class _HouseCarouselState extends State<_HouseCarousel> {
+  final PageController _pages = PageController();
+  Timer? _timer;
+  int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _advance());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _advance() {
+    if (!mounted || widget.images.length < 2 || !_pages.hasClients) return;
+    final next = (_index + 1) % widget.images.length;
+    _pages.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 250,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          PageView.builder(
+            controller: _pages,
+            itemCount: widget.images.length,
+            onPageChanged: (index) => setState(() => _index = index),
+            itemBuilder: (context, index) {
+              return Image.asset(
+                widget.images[index],
+                width: double.infinity,
+                height: 250,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const ColoredBox(
+                  color: GuidePalette.surface,
+                  child: Center(child: Icon(Icons.image_not_supported, color: GuidePalette.muted)),
+                ),
+              );
+            },
+          ),
+          if (widget.images.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < widget.images.length; i++)
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _index ? GuidePalette.accent : GuidePalette.ink.withOpacity(0.45),
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );

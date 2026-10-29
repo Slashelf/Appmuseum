@@ -1,9 +1,9 @@
 [
     {
-    "title": "San Mateo y los cuatro evangelistas",
+    "title": "La Virgen del Cerro",
     "location": "Casa Nacional de Moneda, Potosí",
-    "description": "Serie de Melchor Pérez de Holguín, pintada en 1724 y conservada en su sala de la Casa Nacional de Moneda. En el San Mateo el pintor dejó escrito que lo hizo en Potosí ese año.",
-    "imageUrl": "assets/images/recomendados/2.jpg",
+    "description": "Óleo anónimo de hacia 1740. La silueta de la Virgen es el Cerro Rico. Se conserva en la Casa Nacional de la Moneda.",
+    "imageUrl": "assets/images/casa/virgen.jpg",
     "coordinates": {
       "latitude": -19.5886111,
       "longitude": -65.7541667,
@@ -12,12 +12,12 @@
     "openingHours": "Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00"
   },
   {
-    "title": "San Francisco de Asís",
+    "title": "El Mascarón",
     "location": "Casa Nacional de Moneda, Potosí",
-    "description": "Lienzo firmado en 1694 por Melchor Pérez de Holguín. En la Casa Nacional de Moneda hace pareja con San Pedro de Alcántara, de su primera etapa de monjes y ascetas.",
+    "description": "Máscara del primer patio, colocada en 1865 por el grabador francés Eugenio Martin Moulon. Lleva una corona de uvas.",
     "celular": "26222777",
     "direccion": "Calle Ayacucho, entre Quijarro y Bustillos",
-    "imageUrl": "assets/images/recomendados/1.jpg",
+    "imageUrl": "assets/images/casa/mascaron.jpg",
     "coordinates": {
       "latitude": -19.5886111,
       "longitude": -65.7541667,

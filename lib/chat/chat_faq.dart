@@ -462,8 +462,8 @@ class ChatFaq {
       ],
       'ack': ['Te escucho.', 'Dime.', 'Sigo aquí.'],
       'name': [
-        'Soy la guía de Potosí Memoriam.',
-        'Me puedes decir guía. Acompaño la visita en Potosí Memoriam.',
+        'Soy el guía de la Casa Nacional de la Moneda.',
+        'Me puedes decir guía. Acompaño la visita en la Casa Nacional de la Moneda.',
       ],
     },
     'en': {
@@ -476,8 +476,8 @@ class ChatFaq {
       ],
       'ack': ['I am listening.', 'Go ahead.', 'I am here.'],
       'name': [
-        'I am the Potosí Memoriam guide.',
-        'You can call me the guide. I walk with you through Potosí Memoriam.',
+        'I am the guide of the Casa Nacional de la Moneda.',
+        'You can call me the guide. I walk with you through the Casa Nacional de la Moneda.',
       ],
     },
     'de': {
@@ -490,8 +490,8 @@ class ChatFaq {
       ],
       'ack': ['Ich höre.', 'Nur zu.', 'Ich bin da.'],
       'name': [
-        'Ich bin die Führung von Potosí Memoriam.',
-        'Sie können mich Führung nennen. Ich begleite den Besuch in Potosí Memoriam.',
+        'Ich bin die Führung der Casa Nacional de la Moneda.',
+        'Sie können mich Führung nennen. Ich begleite den Besuch in der Casa Nacional de la Moneda.',
       ],
     },
   };
@@ -694,11 +694,11 @@ class ChatFaq {
   static String offTopicReply(String languageCode) {
     switch (_language(languageCode)) {
       case 'en':
-        return 'I cannot help with that. Ask me about the places, their history, and what you can see on the visit.';
+        return "Mmm… I don't know. They don't pay me for that, and my creator gave me a boring personality.";
       case 'de':
-        return 'Dabei kann ich nicht helfen. Fragen Sie mich nach den Orten, ihrer Geschichte und dem, was Sie bei dem Besuch sehen.';
+        return 'Mmm… ich weiß nicht. Dafür werde ich nicht bezahlt, und mein Schöpfer hat mir eine langweilige Persönlichkeit gegeben.';
       default:
-        return 'De eso no puedo hablar. Pregúntame por los lugares, su historia y lo que puedes ver en la visita.';
+        return 'Mmm… no sé. No me pagan para eso, y además mi creador me dio una personalidad aburrida.';
     }
   }
 
@@ -716,11 +716,11 @@ class ChatFaq {
   static String missingKey(String languageCode) {
     switch (_language(languageCode)) {
       case 'en':
-        return 'The DeepSeek key is missing. Paste it to get an answer.';
+        return 'The Grok key is missing. Paste it to get an answer.';
       case 'de':
-        return 'Der DeepSeek-Schlüssel fehlt. Fügen Sie ihn ein, um eine Antwort zu erhalten.';
+        return 'Der Grok-Schlüssel fehlt. Fügen Sie ihn ein, um eine Antwort zu erhalten.';
       default:
-        return 'Falta la clave de DeepSeek. Pégala para poder responder.';
+        return 'Falta la clave de Grok. Pégala para poder responder.';
     }
   }
 
@@ -738,11 +738,11 @@ class ChatFaq {
   static String noCredit(String languageCode) {
     switch (_language(languageCode)) {
       case 'en':
-        return 'DeepSeek has no credit. Recharge the account to continue.';
+        return 'Grok has no credit. Recharge the account to continue.';
       case 'de':
-        return 'DeepSeek hat kein Guthaben. Laden Sie das Konto auf, um fortzufahren.';
+        return 'Grok hat kein Guthaben. Laden Sie das Konto auf, um fortzufahren.';
       default:
-        return 'DeepSeek no tiene crédito. Recarga la cuenta para seguir.';
+        return 'Grok no tiene crédito. Recarga la cuenta para seguir.';
     }
   }
 
@@ -755,6 +755,7 @@ class ChatFaq {
     'contrato', 'eleccion', 'elecciones', 'voto', 'votar', 'candidato',
     'presidente', 'election', 'elections', 'president', 'wahl', 'praesident',
     'politica', 'politico', 'politics',
+    'chiste', 'chistes', 'broma', 'bromas', 'joke', 'jokes', 'witz', 'witze',
   };
 
   static const _heritageWords = {

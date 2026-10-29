@@ -19,7 +19,7 @@ class OnBoarding extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Image.asset(
-            'assets/images/casa2.jpg',
+            'assets/images/casa/fachada.jpg',
             fit: BoxFit.cover,
             width: screenWidth,
             height: screenHeight,

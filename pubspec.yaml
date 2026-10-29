@@ -97,8 +97,6 @@ flutter:
     - assets/data/view.json
     - assets/data/object_carousel.json
     - assets/data/i18n/content_i18n.json
-    - assets/images/item1/
-    - assets/images/item2/
     - assets/images/item3/
     - assets/images/item4/
     - assets/images/item5/
@@ -106,6 +104,7 @@ flutter:
     - assets/images/item7/
     - assets/images/item8/
     - assets/images/recomendados/
+    - assets/images/casa/
     - assets/images/
     - assets/audio/
 

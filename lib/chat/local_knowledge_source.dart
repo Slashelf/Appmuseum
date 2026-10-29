@@ -7,9 +7,15 @@ import 'place_card.dart';
 class LocalKnowledgeSource implements KnowledgeSource {
   final ContentRepository repository;
 
+  /// Ficha de la casa cuando no hay beacon. No inventa precios ni horarios.
+  static const houseFact =
+      'Casa Nacional de la Moneda, Calle Ayacucho, entre Quijarro y Bustillos. '
+      'Teléfono 26222777. Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00. '
+      'Entrada: 20 Bs nacionales, 70 Bs extranjeros.';
+
   LocalKnowledgeSource(this.repository);
 
-  /// Solo la exhibición del beacon. Sin beacon no se presta otra ficha.
+  /// Con beacon, solo esa ficha. Sin beacon, la casa y su ficha de visita.
   @override
   Future<List<KnowledgeSnippet>> search({
     required String question,
@@ -17,11 +23,32 @@ class LocalKnowledgeSource implements KnowledgeSource {
     String? currentPlaceId,
   }) async {
     final id = currentPlaceId?.trim() ?? '';
-    if (id.isEmpty) return const [];
+    if (id.isEmpty) return [await _house(languageCode)];
     final places = await repository.getPlaces();
     final card = _placeCard(places, id, languageCode);
     if (card == null) return const [];
     return [card];
+  }
+
+  Future<KnowledgeSnippet> _house(String languageCode) async {
+    final carousel = await repository.getCarousel();
+    final text = carousel?.localized(languageCode);
+    final title = text?.title.trim().isNotEmpty == true
+        ? text!.title.trim()
+        : 'Casa Nacional de la Moneda';
+    final paragraphs = text?.description ?? const <String>[];
+    final body = [
+      ...paragraphs.where((paragraph) => paragraph.trim().isNotEmpty),
+      houseFact,
+    ].join('\n\n');
+    return KnowledgeSnippet(
+      id: 'casa-nacional',
+      title: title,
+      body: body,
+      fact: body,
+      focus: AnswerFocus.here,
+      score: 1,
+    );
   }
 
   KnowledgeSnippet? _placeCard(

@@ -6,7 +6,7 @@ import 'package:app_guia_v1/chat/chat_controller.dart';
 import 'package:app_guia_v1/chat/chat_message.dart';
 import 'package:app_guia_v1/chat/chat_voice.dart';
 import 'package:app_guia_v1/chat/conversation_store.dart';
-import 'package:app_guia_v1/chat/eleven_labs_speech.dart';
+import 'package:app_guia_v1/chat/xai_speech.dart';
 import 'package:app_guia_v1/chat/guide_narrator.dart';
 import 'package:app_guia_v1/chat/knowledge_source.dart';
 import 'package:app_guia_v1/chat/local_guide_answer_service.dart';
@@ -50,30 +50,25 @@ void main() {
     expect(buffer.flush(), 'Luego sigue');
   });
 
-  test('elevenlabs asks for the fast model and hides the key', () {
+  test('xai tts sends text, voice and language and hides the key', () {
     const secret = 'sk_test_secret';
-    final payload = ElevenLabsSpeech.body(
+    final payload = XaiSpeech.body(
       'Segunda.',
-      previousText: 'Primera.',
+      voiceId: 'ara',
       languageCode: 'pt',
     );
-    expect(payload['model_id'], 'eleven_flash_v2_5');
-    expect(payload['language_code'], 'pt');
-    expect(payload['previous_text'], 'Primera.');
-    final settings = payload['voice_settings'] as Map;
-    expect(settings['stability'], 0.4);
-    expect(settings['similarity_boost'], 0.75);
-    expect(settings['style'], 0.35);
-    expect(settings['use_speaker_boost'], isTrue);
-    expect(settings['speed'], 1.0);
+    expect(payload['text'], 'Segunda.');
+    expect(payload['voice_id'], 'ara');
+    expect(payload['language'], 'es-MX');
     expect(jsonEncode(payload), isNot(contains(secret)));
-    expect(ElevenLabsSpeech.body('Hola.', languageCode: 'es').containsKey('previous_text'), isFalse);
-    expect(ElevenLabsSpeech.streamUri('voz-muestra').path, contains('/stream'));
-    expect(ElevenLabsSpeech.streamUri('voz-muestra').query, contains('mp3_22050_32'));
+    expect(XaiSpeech.body('Hola.', voiceId: 'leo', languageCode: 'en')['language'], 'en');
+    expect(XaiSpeech.body('Hola.', voiceId: 'ara', languageCode: 'de')['language'], 'de');
+    expect(XaiSpeech.endpoint.host, 'api.x.ai');
+    expect(XaiSpeech.endpoint.path, '/v1/tts');
     expect(GuideNarrator.usefulAudioLimit, const Duration(seconds: 8));
-    final headers = ElevenLabsSpeech.headers(secret);
-    expect(headers['xi-api-key'], secret);
-    expect(ElevenLabsSpeech.redacted(headers), isNot(contains(secret)));
+    final headers = XaiSpeech.headers(secret);
+    expect(headers['Authorization'], 'Bearer $secret');
+    expect(XaiSpeech.redacted(headers), isNot(contains(secret)));
     expect(voiceListenOptions('es_ES').pauseFor, chatListenLimit);
     expect(voiceListenOptions('es_ES').cancelOnError, isFalse);
     expect(chatListenOptions('es_ES').pauseFor, const Duration(seconds: 3));
@@ -164,13 +159,13 @@ void main() {
       onUsefulAudio: (_) {},
       fetch: (request) async {
         seen.add(request);
-        final payload = ElevenLabsSpeech.body(
+        final payload = XaiSpeech.body(
           request.text,
-          previousText: request.previousText,
+          voiceId: request.voiceId,
           languageCode: request.languageCode,
         );
-        expect(payload['model_id'], 'eleven_flash_v2_5');
-        expect(payload['language_code'], 'pt');
+        expect(payload['voice_id'], 'voz-es');
+        expect(payload['language'], 'es-MX');
         return NarrationFetch(status: 200, bytes: Uint8List.fromList([9]));
       },
     );
@@ -253,8 +248,8 @@ void main() {
   });
 
   test('a premade spanish narrator wins over an english one', () {
-    expect(SpanishNarratorLookup.voicesUri.path, '/v1/voices');
-    expect(SpanishNarratorLookup.voicesUri.host, 'api.elevenlabs.io');
+    expect(SpanishNarratorLookup.voicesUri.path, '/v1/tts/voices');
+    expect(SpanishNarratorLookup.voicesUri.host, 'api.x.ai');
     final onlyEnglish = SpanishNarrator.choose([
       {
         'voice_id': 'onwK4e9ZLuTAKqWW03F9',
@@ -351,16 +346,15 @@ void main() {
     await chat.setMicLanguage('auto');
     expect(chat.replyLanguage('de'), 'de');
     expect(chat.earLocale('en'), 'en_US');
+    chat.updateVoiceId('leo');
+    expect(await chat.ensureNarratorVoice(), 'leo');
+    expect(chat.guideVoice, 'leo');
+    expect(lookups, 0);
     chat.updateVoiceId('ya-elegida');
-    expect(await chat.ensureNarratorVoice(), 'ya-elegida');
+    expect(await chat.ensureNarratorVoice(), 'ara');
     expect(lookups, 0);
     chat.updateVoiceId('');
-    chat.updateElevenKey('sk_test_secret');
-    expect(await chat.ensureNarratorVoice(), 'es-calida');
-    expect(chat.elevenVoiceId, 'es-calida');
-    expect(lookups, 1);
-    expect(await chat.ensureNarratorVoice(), 'es-calida');
-    expect(lookups, 1);
+    expect(chat.guideVoice, 'ara');
 
     final missed = ChatController(
       store: MemoryConversationStore(),
@@ -368,12 +362,9 @@ void main() {
       answers: LocalGuideAnswerService(),
       remote: remote,
       visit: VisitContext(),
-      voices: _FixedVoices(() => null),
     );
-    missed.updateElevenKey('sk_test_secret');
-    expect(await missed.ensureNarratorVoice(), '');
-    expect(await missed.ensureNarratorVoice(), '');
-    expect(missed.elevenVoiceId, isEmpty);
+    expect(await missed.ensureNarratorVoice(), 'ara');
+    expect(missed.guideVoice, 'ara');
   });
 
   test('speech route uses the loudspeaker and takes focus', () {

@@ -11,6 +11,7 @@ import '../chat/chat_voice.dart';
 import '../chat/guide_narrator.dart';
 import '../chat/local_exhibition_answers.dart';
 import '../core/locale/locale_controller.dart';
+import '../core/navigation/place_navigation.dart';
 import '../core/theme/app_theme.dart';
 import 'app_localizations.dart';
 import 'beacon_scan_services.dart';
@@ -223,15 +224,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final chat = context.read<ChatController>();
     await chat.ensureNarratorVoice();
     if (!mounted) return;
-    if (chat.elevenKey.trim().isNotEmpty && chat.elevenVoiceId.trim().isEmpty) {
-      setState(() => _phoneVoice = true);
-    }
     final ui = context.read<LocaleController>().locale.languageCode;
     _guideNarrator().enqueue(
       sentence,
       languageCode: chat.replyLanguage(ui),
-      apiKey: () => chat.elevenKey,
-      voiceId: () => chat.elevenVoiceId,
+      apiKey: () => chat.speechKey,
+      voiceId: () => chat.guideVoice,
     );
   }
 
@@ -967,7 +965,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _exhibitionBar(AppLocalizations t, ChatController chat, String placeName) {
-    final eleven = chat.elevenKey.isNotEmpty;
+    final cloudVoice = chat.speechKey.isNotEmpty;
     return Container(
       width: double.infinity,
       color: GuidePalette.background,
@@ -991,14 +989,14 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               if (_conversation)
                 Tooltip(
-                  message: eleven ? 'ElevenLabs' : t.get('audioVoice'),
+                  message: cloudVoice ? 'Grok' : t.get('audioVoice'),
                   child: Container(
                     key: const Key('chat-voice-dot'),
                     width: 8,
                     height: 8,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
-                      color: eleven ? GuidePalette.accent : GuidePalette.muted,
+                      color: cloudVoice ? GuidePalette.accent : GuidePalette.muted,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -1279,6 +1277,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: GuideRoutes.talk),
         builder: (_) => VoiceConversationScreen(
           ear: widget.ear,
           speaker: widget.speaker,

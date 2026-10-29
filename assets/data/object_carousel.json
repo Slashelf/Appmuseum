@@ -12,6 +12,10 @@
 
 "Según los libros de la Hacienda Real de Potosí, tras la primera rendición de monedas de plata que se sacaron de la Casa de Moneda de la Villa Imperial, los trabajos de acuñación se iniciaron el 28 de marzo de 1574. Lo que significaría que la ceca de Potosí se construyó entre diciembre de 1572 a marzo de 1574. Concluida la construcción, la ceca de Potosí emprendió la acuñación de la moneda legal, la primera rendición sacada correspondió entre 1574-1575. Existe un documento que Potosí amonedó 26.531 pesos.",
 "Fueron tan conocidas las monedas emitidas durante ese periodo en el mundo que se extendió la frase inmortalizada por Miguel de Cervantes y Saavedra, Vale un Potosí."],
-  "images":  "https://res.cloudinary.com/dfyoxr9km/image/upload/v1758852048/edificio_q7yjgd.jpg"
+  "images": [
+    "assets/images/casa/fachada.jpg",
+    "assets/images/casa/mascaron-patio.jpg",
+    "assets/images/casa/mascaron.jpg"
+  ]
   
 }

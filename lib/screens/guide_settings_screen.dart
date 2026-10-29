@@ -8,7 +8,7 @@ import '../core/locale/locale_controller.dart';
 import '../core/theme/app_theme.dart';
 import 'app_localizations.dart';
 
-/// Claves y prueba de conexión. La clave compilada oculta su campo.
+/// Clave de Grok y elección de voz. La clave compilada oculta su campo.
 class GuideSettingsScreen extends StatefulWidget {
   const GuideSettingsScreen({super.key});
 
@@ -17,13 +17,9 @@ class GuideSettingsScreen extends StatefulWidget {
 }
 
 class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
-  final TextEditingController _deepSeek = TextEditingController();
-  final TextEditingController _eleven = TextEditingController();
-  final TextEditingController _voice = TextEditingController();
-  String _deepResult = '';
-  String _elevenResult = '';
-  bool _deepBusy = false;
-  bool _elevenBusy = false;
+  final TextEditingController _grok = TextEditingController();
+  String _result = '';
+  bool _busy = false;
   bool _filled = false;
 
   @override
@@ -31,25 +27,13 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
     super.didChangeDependencies();
     if (_filled) return;
     final chat = context.read<ChatController>();
-    if (!chat.hasCompiledKey) _deepSeek.text = chat.runtimeKey;
-    if (!chat.hasCompiledElevenKey) _eleven.text = chat.elevenRuntimeKey;
-    _voice.text = chat.elevenVoiceId;
+    if (!chat.hasCompiledKey) _grok.text = chat.runtimeKey;
     _filled = true;
-    _fillResolvedVoice(chat);
-  }
-
-  Future<void> _fillResolvedVoice(ChatController chat) async {
-    if (_voice.text.trim().isNotEmpty) return;
-    final id = await chat.ensureNarratorVoice();
-    if (!mounted || id.trim().isEmpty || _voice.text.trim().isNotEmpty) return;
-    setState(() => _voice.text = id.trim());
   }
 
   @override
   void dispose() {
-    _deepSeek.dispose();
-    _eleven.dispose();
-    _voice.dispose();
+    _grok.dispose();
     super.dispose();
   }
 
@@ -57,6 +41,7 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final chat = context.watch<ChatController>();
+    final woman = chat.guideVoice == 'ara';
     return Scaffold(
       backgroundColor: GuidePalette.background,
       appBar: AppBar(
@@ -78,45 +63,41 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
             _note(t.get('settingsCompiled'))
           else
             _secretField(
-              key: const Key('chat-settings-deepseek'),
+              key: const Key('chat-settings-grok'),
               label: t.get('settingsDeepSeek'),
-              controller: _deepSeek,
+              controller: _grok,
               onChanged: chat.updateDeepSeekKey,
             ),
           const SizedBox(height: 8),
           _probeButton(
-            key: const Key('chat-test-deepseek'),
+            key: const Key('chat-test-grok'),
             label: t.get('settingsTestConnection'),
-            busy: _deepBusy,
-            onPressed: () => _testDeepSeek(chat, t),
+            busy: _busy,
+            onPressed: () => _test(chat, t),
           ),
-          if (_deepResult.isNotEmpty)
-            _result(const Key('chat-test-deepseek-result'), _deepResult),
+          if (_result.isNotEmpty) _resultText(const Key('chat-test-grok-result'), _result),
           const SizedBox(height: 20),
-          if (chat.hasCompiledElevenKey)
-            _note(t.get('settingsCompiled'))
-          else
-            _secretField(
-              key: const Key('chat-settings-eleven'),
-              label: t.get('settingsEleven'),
-              controller: _eleven,
-              onChanged: chat.updateElevenKey,
-            ),
+          Text(
+            t.get('settingsVoice'),
+            style: AppFonts.poppins(fontSize: 13, color: GuidePalette.muted),
+          ),
           const SizedBox(height: 8),
-          _probeButton(
-            key: const Key('chat-test-eleven'),
-            label: t.get('settingsTestVoice'),
-            busy: _elevenBusy,
-            onPressed: () => _testEleven(chat, t),
-          ),
-          if (_elevenResult.isNotEmpty)
-            _result(const Key('chat-test-eleven-result'), _elevenResult),
-          const SizedBox(height: 20),
-          _secretField(
-            key: const Key('chat-settings-voice'),
-            label: t.get('settingsVoice'),
-            controller: _voice,
-            onChanged: chat.updateVoiceId,
+          Row(
+            children: [
+              _voiceButton(
+                key: const Key('chat-voice-woman'),
+                label: t.get('voiceWoman'),
+                selected: woman,
+                onPressed: () => chat.updateVoiceId('ara'),
+              ),
+              const SizedBox(width: 8),
+              _voiceButton(
+                key: const Key('chat-voice-man'),
+                label: t.get('voiceMan'),
+                selected: !woman,
+                onPressed: () => chat.updateVoiceId('leo'),
+              ),
+            ],
           ),
         ],
       ),
@@ -190,7 +171,27 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
     );
   }
 
-  Widget _result(Key key, String text) {
+  Widget _voiceButton({
+    required Key key,
+    required String label,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    return Expanded(
+      child: OutlinedButton(
+        key: key,
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: selected ? GuidePalette.background : GuidePalette.ink,
+          backgroundColor: selected ? GuidePalette.accent : Colors.transparent,
+          side: const BorderSide(color: GuidePalette.accent),
+        ),
+        child: Text(label, style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _resultText(Key key, String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Text(
@@ -201,38 +202,21 @@ class _GuideSettingsScreenState extends State<GuideSettingsScreen> {
     );
   }
 
-  Future<void> _testDeepSeek(ChatController chat, AppLocalizations t) async {
+  Future<void> _test(ChatController chat, AppLocalizations t) async {
     final language = context.read<LocaleController>().locale.languageCode;
     if (chat.deepSeekKey.isEmpty) {
-      setState(() => _deepResult = ChatFaq.missingKey(language));
+      setState(() => _result = ChatFaq.missingKey(language));
       return;
     }
     setState(() {
-      _deepBusy = true;
-      _deepResult = '';
+      _busy = true;
+      _result = '';
     });
     final ConnectionReport report = await chat.connections.deepSeek(chat.deepSeekKey);
     if (!mounted) return;
     setState(() {
-      _deepBusy = false;
-      _deepResult = report.ok ? t.get('settingsConnected') : report.message;
-    });
-  }
-
-  Future<void> _testEleven(ChatController chat, AppLocalizations t) async {
-    if (chat.elevenKey.isEmpty) {
-      setState(() => _elevenResult = t.get('elevenKeyMissing'));
-      return;
-    }
-    setState(() {
-      _elevenBusy = true;
-      _elevenResult = '';
-    });
-    final ConnectionReport report = await chat.connections.elevenLabs(chat.elevenKey);
-    if (!mounted) return;
-    setState(() {
-      _elevenBusy = false;
-      _elevenResult = report.ok ? t.get('settingsConnected') : report.message;
+      _busy = false;
+      _result = report.ok ? t.get('settingsConnected') : report.message;
     });
   }
 }

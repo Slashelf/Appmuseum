@@ -70,6 +70,34 @@ void main() {
     expect(find.text('chat'), findsOneWidget);
     expect(find.text('place-c'), findsNothing);
   });
+
+  testWidgets('a beacon does not close talk mode', (tester) async {
+    late BuildContext homeContext;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) {
+        homeContext = context;
+        return const Text('home');
+      }),
+    ));
+    Navigator.of(homeContext).push(MaterialPageRoute(
+      settings: const RouteSettings(name: GuideRoutes.talk),
+      builder: (_) => const Text('talk'),
+    ));
+    await tester.pumpAndSettle();
+
+    openPlaceFromBeacon(
+      homeContext,
+      _place('place-c'),
+      placeRoute: (place) => MaterialPageRoute(
+        settings: const RouteSettings(name: GuideRoutes.place),
+        builder: (_) => Text(place.id),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('talk'), findsOneWidget);
+    expect(find.text('place-c'), findsNothing);
+  });
 }
 
 ObjectModel _place(String id) {

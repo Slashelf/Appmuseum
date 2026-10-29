@@ -1,35 +1,25 @@
 [
   {
     "id": "D5:E0:59:B6:6F:C8",
-    "name": "San Mateo y los cuatro evangelistas",
-    "name2": "Sala de Melchor Pérez de Holguín",
-    "description": "En la Casa Nacional de Moneda de Potosí se conserva la serie de los cuatro evangelistas que Melchor Pérez de Holguín pintó en 1724. En el San Mateo el pintor dejó escrito que lo hizo en Potosí ese año. Mateo viste túnica azul y manto rojo, y tiene cerca un libro, un tintero y una pluma. Con Juan, Marcos y Lucas, la serie es de lo más logrado de su última etapa y se ve en la sala dedicada a él.",
-    "cryptDescription": "Melchor Pérez de Holguín, llamado en su tiempo la Brocha de Oro, fue el pintor mayor de la escuela potosina. Vivió casi toda su vida en Potosí y murió hacia 1732. La Casa Nacional de Moneda guarda el conjunto más importante de su obra y le dedica una sala. La serie de cuerpo entero de los cuatro evangelistas está firmada en 1724 en el lienzo de San Mateo. San Juan aparece con túnica verde y manto rojo, el libro y la pluma, y el águila que lo identifica. Junto con Marcos y Lucas, estos cuadros muestran la etapa final del maestro, de figuras más suaves. La exhibición está en la Casa de la Moneda: es el cuadro, no una iglesia.",
-    "imageUrl": "assets/images/item1/CriptaFranci.jpg",
-    "imageUrl2": "assets/images/item1/francisco4.jpg",
+    "name": "La Virgen del Cerro",
+    "name2": "Óleo anónimo, hacia 1740",
+    "description": "Óleo anónimo de hacia 1740, de unos 143 por 110 centímetros, conservado en la Casa Nacional de la Moneda de Potosí. La silueta de la Virgen es el Cerro Rico.",
+    "cryptDescription": "La Virgen del Cerro es un óleo anónimo del siglo XVIII, fechado hacia 1740. Mide cerca de 143 por 110 centímetros y se guarda en la Casa Nacional de la Moneda de Potosí. El manto de la Virgen dibuja el Cerro Rico. Arriba se ven el sol, la luna y la Trinidad. Abajo, un papa, un obispo, un rey y una ciudad. Quienes estudian el cuadro lo leen como un encuentro entre la Virgen y la montaña, y esa no es la única lectura. Este es el lienzo de la Casa de la Moneda. Hay otro parecido en el Museo Nacional de Arte de La Paz, y no es este.",
+    "imageUrl": "assets/images/casa/virgen.jpg",
+    "imageUrl2": "assets/images/casa/virgen.jpg",
     "extraImages": [
-      "assets/images/item1/CriptaFranci.jpg",
-      "assets/images/item1/CriptaFranci2.jpg",
-      "assets/images/item1/CriptaFranci3.jpg",
-      "assets/images/item1/CriptaFranci4.jpg"
+      "assets/images/casa/virgen.jpg"
     ],
     "galleryImages": [
-      "assets/images/item1/francisco.jpg",
-      "assets/images/item1/francisco2.jpg",
-      "assets/images/item1/francisco3.jpg",
-      "assets/images/item1/francisco4.jpg",
-      "assets/images/item1/francisco5.jpg",
-      "assets/images/item1/Francisco6.jpg",
-      "assets/images/item1/Francisco7.jpg",
-      "assets/images/item1/francisco8.jpg"
+      "assets/images/casa/virgen.jpg"
     ],
     "location": "Casa Nacional de Moneda, Potosí",
     "direccion": "Calle Ayacucho, entre Quijarro y Bustillos",
     "celular": "26222777",
     "openingHours": "Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00",
-    "yearFounded": 1724,
-    "architecturalStyle": "Pintura colonial potosina",
-    "historicalNotes": "Serie firmada por Melchor Pérez de Holguín en Potosí en 1724. Se conserva en la sala del pintor de la Casa Nacional de Moneda.",
+    "yearFounded": 1740,
+    "architecturalStyle": "Pintura virreinal",
+    "historicalNotes": "Óleo anónimo, hacia 1740, unos 143 por 110 centímetros. Se conserva en la Casa Nacional de la Moneda. La foto es de Paul M. R. Maeyaert, CC BY-SA 4.0.",
     "entranceFee": "20 Bs nacionales, 70 Bs extranjeros",
     "tourAvailable": true,
     "category": "Museo / Pintura",
@@ -37,34 +27,30 @@
   },
   {
     "id": "DD:20:87:F7:72:14",
-    "name": "San Francisco de Asís",
-    "name2": "San Pedro de Alcántara",
-    "description": "En la sala de Melchor Pérez de Holguín de la Casa Nacional de Moneda hay un San Francisco de Asís firmado en 1694. Hace pareja con un San Pedro de Alcántara del mismo pintor. Son de su primera etapa, cuando pintaba monjes y ascetas, con el peso en el rostro y en la luz. El cuadro está en el museo, no en un convento.",
-    "cryptDescription": "Hacia 1694 Melchor Pérez de Holguín, la Brocha de Oro de Potosí, firmó este San Francisco de Asís. En la Casa Nacional de Moneda cuelga junto a un San Pedro de Alcántara. Esa primera época se ocupa de frailes y místicos, figuras solas, cercanas al clarooscuro que el pintor tomó de los grabados europeos. Holguín trabajó casi siempre en Potosí y su mayor conjunto se guarda en esta casa. La sala que lleva su nombre deja ver el paso de esos santos austeros a las series grandes de su vejez, como los evangelistas de 1724.",
-    "imageUrl": "assets/images/item2/CriptaMer.jpg",
-    "imageUrl2": "assets/images/item2/CriptaMer1.png",
+    "name": "El Mascarón",
+    "name2": "Primer patio",
+    "description": "Máscara del primer patio de la Casa Nacional de la Moneda. La colocó en 1865 el grabador francés Eugenio Martin Moulon. Lleva una corona de uvas.",
+    "cryptDescription": "El Mascarón cuelga en el primer patio de la Casa Nacional de la Moneda, sobre un arco. En 1865 lo puso allí Eugenio Martin Moulon, un francés que grababa los cuños de la ceca. La corona de racimos ha hecho que muchos lo llamen Baco. También se lo ha leído como una burla a la codicia. La casa no fija una sola historia: la máscara está en el patio y esas son las lecturas que la acompañan.",
+    "imageUrl": "assets/images/casa/mascaron.jpg",
+    "imageUrl2": "assets/images/casa/mascaron-patio.jpg",
     "extraImages": [
-      "assets/images/item2/CriptaMer.jpg",
-      "assets/images/item2/CriptaMer1.png"
+      "assets/images/casa/mascaron.jpg",
+      "assets/images/casa/mascaron-patio.jpg"
     ],
     "galleryImages": [
-      "assets/images/item2/CriptaMer1.png",
-      "assets/images/item2/CriptaMer.jpg",
-      "assets/images/item2/Merced.jpg",
-      "assets/images/item2/Merced2.jpg",
-      "assets/images/item2/Merced3.jpg"
-
+      "assets/images/casa/mascaron.jpg",
+      "assets/images/casa/mascaron-patio.jpg"
     ],
     "location": "Casa Nacional de Moneda, Potosí",
     "direccion": "Calle Ayacucho, entre Quijarro y Bustillos",
     "celular": "26222777",
     "openingHours": "Lunes a viernes 8:30 a 16:30; sábado y domingo 9:00 a 13:00",
-    "yearFounded": 1694,
-    "architecturalStyle": "Pintura colonial potosina",
-    "historicalNotes": "Lienzo firmado en 1694. En la Casa Nacional de Moneda forma pareja con San Pedro de Alcántara.",
+    "yearFounded": 1865,
+    "architecturalStyle": "Escultura del patio",
+    "historicalNotes": "Colocado en 1865 por Eugenio Martin Moulon. Fotos: Martin St-Amant, CC BY 3.0, y Dan Lundberg, CC BY-SA 2.0.",
     "entranceFee": "20 Bs nacionales, 70 Bs extranjeros",
     "tourAvailable": true,
-    "category": "Museo / Pintura",
+    "category": "Museo / Escultura",
     "relatedObjectId": "D5:E0:59:B6:6F:C8"
   },
   {

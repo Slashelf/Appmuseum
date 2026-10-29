@@ -28,31 +28,31 @@ void main() {
     expect(places, hasLength(source.length));
     expect(places.map((place) => place.id), containsAll(['D5:E0:59:B6:6F:C8', 'DD:20:87:F7:72:14', 'OBJ005']));
 
-    final evangelists = places.firstWhere((place) => place.id == 'D5:E0:59:B6:6F:C8');
-    expect(evangelists.name, 'San Mateo y los cuatro evangelistas');
-    expect(evangelists.imageUrl, 'assets/images/item1/CriptaFranci.jpg');
-    expect(evangelists.extraImages, isNotEmpty);
-    expect(evangelists.galleryImages, isNotEmpty);
-    expect(evangelists.localized('en').name, 'Saint Matthew and the four evangelists');
-    expect(evangelists.localized('de').name, isNot(evangelists.name));
-    expect(evangelists.localized('fr').name, evangelists.name);
+    final virgen = places.firstWhere((place) => place.id == 'D5:E0:59:B6:6F:C8');
+    expect(virgen.name, 'La Virgen del Cerro');
+    expect(virgen.imageUrl, 'assets/images/casa/virgen.jpg');
+    expect(virgen.extraImages, isNotEmpty);
+    expect(virgen.galleryImages, isNotEmpty);
+    expect(virgen.localized('en').name, 'The Virgin of the Mountain');
+    expect(virgen.localized('de').name, isNot(virgen.name));
+    expect(virgen.localized('fr').name, virgen.name);
 
     final recommended = await repository.getRecommended();
     expect(recommended, hasLength(4));
-    final francis = recommended.firstWhere(
-      (item) => item.title == 'San Francisco de Asís',
+    final mask = recommended.firstWhere(
+      (item) => item.title == 'El Mascarón',
     );
-    expect(francis.latitude, closeTo(-19.5886111, 0.000001));
-    expect(francis.longitude, closeTo(-65.7541667, 0.000001));
-    expect(francis.celular, '26222777');
-    expect(francis.localized('en').title, isNot(francis.title));
+    expect(mask.latitude, closeTo(-19.5886111, 0.000001));
+    expect(mask.longitude, closeTo(-65.7541667, 0.000001));
+    expect(mask.celular, '26222777');
+    expect(mask.localized('en').title, isNot(mask.title));
 
-    final series = recommended.firstWhere(
-      (item) => item.title == 'San Mateo y los cuatro evangelistas',
+    final painting = recommended.firstWhere(
+      (item) => item.title == 'La Virgen del Cerro',
     );
-    expect(series.sourceId, 'sf1');
-    expect(series.yearFounded, 1724);
-    expect(series.extraImages, isNotEmpty);
+    expect(painting.sourceId, 'virgen1');
+    expect(painting.yearFounded, 1740);
+    expect(painting.extraImages, isNotEmpty);
 
     final carousel = await repository.getCarousel();
     final carouselSource = jsonDecode(
@@ -61,7 +61,8 @@ void main() {
     expect(carousel, isNotNull);
     expect(carousel!.description, hasLength((carouselSource['description'] as List).length));
     expect(carousel.description.first, startsWith('La Casa Nacional de la Moneda'));
-    expect(carousel.images.single, contains('cloudinary'));
+    expect(carousel.images, hasLength(3));
+    expect(carousel.images.first, contains('fachada.jpg'));
     expect(carousel.localized('en').description.first, isNot(carousel.description.first));
 
     final byMac = await repository.findByCode('d5:e0:59:b6:6f:c8');

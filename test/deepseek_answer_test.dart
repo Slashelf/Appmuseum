@@ -118,21 +118,20 @@ void main() {
 
     final encoded = jsonEncode(body);
     expect(body['temperature'], 0.7);
-    expect(body['max_tokens'], 450);
-    expect(body['thinking'], {'type': 'disabled'});
-    final messages = body['messages'] as List;
-    expect(messages.first['role'], 'system');
-    final dialogue = messages.where((message) => message['role'] != 'system').toList();
+    expect(body['max_output_tokens'], 450);
+    expect(body.containsKey('thinking'), isFalse);
+    expect(body['model'], 'grok-4.7');
+    final dialogue = body['input'] as List;
     expect(dialogue, hasLength(4));
     expect(dialogue.first['content'], 'respuesta 7');
     expect(dialogue.last['content'], '¿quién fundó este lugar?');
-    final system = messages.first['content'] as String;
-    expect(system, contains('Potosí Memoriam'));
-    expect(system, contains('una exhibición de fotos e imágenes'));
+    final system = body['instructions'] as String;
+    expect(system, contains('Casa Nacional de la Moneda'));
+    expect(system, contains('personalidad aburrida'));
     expect(system, contains('Exhibición actual: Convento de San Francisco'));
     expect(system.split('Exhibición actual:').first, isNot(contains('Convento de San Francisco')));
     expect(system.split('Resumen de la visita:').first, isNot(contains('Entierros bajo el altar')));
-    expect(system, contains('no está en el lugar real'));
+    expect(system, contains('habla solo de ese objeto'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, contains('Entierros bajo el altar mayor'));
@@ -140,8 +139,7 @@ void main() {
     expect(system, contains('Lunes a viernes por la tarde'));
     expect(system, contains('Calle Tarija'));
     expect(system, contains('2 o 3 frases como máximo'));
-    expect(system, contains('6 a 8 frases'));
-    expect(system, contains('con cautela si no estás seguro'));
+    expect(system, contains('4 a 6 frases'));
     expect(system, contains('en el idioma en que te habla el visitante'));
     expect(system, contains('Resumen de la visita:'));
     expect(system, contains('no lo inventes'));
@@ -177,20 +175,20 @@ void main() {
       spoken: true,
       dialogueLimit: 4,
     );
-    final quietSystem = (quiet['messages'] as List).first['content'] as String;
-    final spokenSystem = (spoken['messages'] as List).first['content'] as String;
+    final quietSystem = quiet['instructions'] as String;
+    final spokenSystem = spoken['instructions'] as String;
     expect(quietSystem, isNot(contains('Narrador de museo')));
     expect(spokenSystem, contains('Narrador de museo'));
     expect(spokenSystem, contains('Exhibición actual'));
     expect(spokenSystem, contains('2 o 3 frases como máximo'));
     expect(spokenSystem.startsWith(quietSystem), isTrue);
-    expect(spoken['model'], 'deepseek-flash');
-    expect(spoken['max_tokens'], 300);
-    expect(quiet['max_tokens'], 450);
+    expect(spoken['model'], 'grok-4.7');
+    expect(spoken['max_output_tokens'], 300);
+    expect(quiet['max_output_tokens'], 450);
     expect(quiet['temperature'], 0.7);
-    expect(spoken['thinking'], {'type': 'disabled'});
+    expect(spoken.containsKey('thinking'), isFalse);
     expect(spoken.containsKey('stream'), isFalse);
-    final dialogue = (spoken['messages'] as List).where((message) => message['role'] != 'system');
+    final dialogue = spoken['input'] as List;
     expect(dialogue, hasLength(4));
     expect(DeepSeekSse.delta('data: {"choices":[{"delta":{"content":"Hola. "}}]}'), 'Hola. ');
     expect(DeepSeekSse.delta('data: [DONE]'), isNull);
@@ -201,7 +199,7 @@ void main() {
       snippets: const [],
       placeName: 'Criptas de La Merced',
     );
-    final otherSystem = (other['messages'] as List).first['content'] as String;
+    final otherSystem = other['instructions'] as String;
     expect(
       otherSystem.split('Resumen de la visita:').first,
       quietSystem.split('Resumen de la visita:').first,
@@ -231,7 +229,7 @@ void main() {
         placeName: 'Criptas',
         spoken: spoken,
       );
-      return (body['messages'] as List).first['content'] as String;
+      return body['instructions'] as String;
     }
 
     final spanish = system('es');

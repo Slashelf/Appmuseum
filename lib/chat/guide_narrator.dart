@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 import 'chat_voice.dart';
-import 'eleven_labs_speech.dart';
+import 'xai_speech.dart';
 import 'remote_guide_answer_service.dart';
 import 'speech_route.dart';
 
@@ -58,7 +58,7 @@ class NarrationFetch {
   }) : bytes = bytes ?? _empty;
 }
 
-/// Lee una frase con ElevenLabs y, si falla, con la voz del teléfono.
+/// Lee una frase con la voz de Grok y, si falla, con la voz del teléfono.
 ///
 /// El audio de la frase empieza con el primer fragmento. Si en unos 8
 /// segundos no llega audio útil, habla el teléfono. La frase anterior de
@@ -99,7 +99,7 @@ class GuideNarrator {
   void Function(String reason)? onPhoneVoice;
   void Function()? onRemoteVoice;
 
-  /// Motivo de la última caída al teléfono. Vacío si ElevenLabs sonó.
+  /// Motivo de la última caída al teléfono. Vacío si la voz de Grok sonó.
   String? lastPhoneReason;
 
   bool get busy => _busy || _pending.isNotEmpty;
@@ -250,7 +250,7 @@ class GuideNarrator {
     final clean = DeepSeekLog.safe(reason.trim(), secret);
     if (clean.isEmpty) return;
     lastPhoneReason = clean;
-    debugPrint('ElevenLabs: $clean');
+    debugPrint('Voz: $clean');
     onPhoneVoice?.call(clean);
   }
 
@@ -410,14 +410,14 @@ class GuideNarrator {
 
     try {
       final http = await client
-          .postUrl(ElevenLabsSpeech.streamUri(request.voiceId))
+          .postUrl(XaiSpeech.endpoint)
           .timeout(const Duration(seconds: 20));
-      ElevenLabsSpeech.headers(request.apiKey).forEach(http.headers.set);
+      XaiSpeech.headers(request.apiKey).forEach(http.headers.set);
       http.write(
         jsonEncode(
-          ElevenLabsSpeech.body(
+          XaiSpeech.body(
             request.text,
-            previousText: request.previousText,
+            voiceId: request.voiceId,
             languageCode: request.languageCode,
           ),
         ),

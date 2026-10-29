@@ -30,27 +30,20 @@ abstract class ConnectionChecker {
 }
 
 class HttpConnectionChecker implements ConnectionChecker {
-  static const deepSeekBalance = 'https://api.deepseek.com/user/balance';
-  static const elevenUser = 'https://api.elevenlabs.io/v1/user';
+  static const models = 'https://api.x.ai/v1/models';
 
   @override
-  Future<ConnectionReport> deepSeek(String apiKey) {
+  Future<ConnectionReport> deepSeek(String apiKey) => _probe(apiKey);
+
+  @override
+  Future<ConnectionReport> elevenLabs(String apiKey) => _probe(apiKey);
+
+  Future<ConnectionReport> _probe(String apiKey) {
     return _get(
-      Uri.parse(deepSeekBalance),
+      Uri.parse(models),
       apiKey,
       (request, key) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
-      },
-    );
-  }
-
-  @override
-  Future<ConnectionReport> elevenLabs(String apiKey) {
-    return _get(
-      Uri.parse(elevenUser),
-      apiKey,
-      (request, key) {
-        request.headers.set('xi-api-key', key);
       },
     );
   }

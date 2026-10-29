@@ -10,7 +10,6 @@ import 'chat/guide_secrets.dart';
 import 'chat/local_guide_answer_service.dart';
 import 'chat/local_knowledge_source.dart';
 import 'chat/remote_guide_answer_service.dart';
-import 'chat/spanish_narrator.dart';
 import 'chat/visit_context.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/theme/app_theme.dart';
@@ -48,23 +47,20 @@ Future<void> main() async {
 
   final visitContext = VisitContext();
   BeaconServiceFlutter().addPlaceListener(visitContext.updatePlace);
-  const deepseekKey = String.fromEnvironment('DEEPSEEK_API_KEY');
-  const elevenKey = String.fromEnvironment('ELEVENLABS_API_KEY');
+  const xaiKey = String.fromEnvironment('XAI_API_KEY');
   final localAnswers = LocalGuideAnswerService();
   final chat = ChatController(
     store: MemoryConversationStore(),
     knowledge: LocalKnowledgeSource(repository),
     answers: localAnswers,
     remote: RemoteGuideAnswerService(
-      apiKey: deepseekKey,
+      apiKey: xaiKey,
       fallback: localAnswers,
     ),
     visit: visitContext,
-    compiledKey: deepseekKey,
-    compiledElevenKey: elevenKey,
+    compiledKey: xaiKey,
     secrets: SecureGuideSecretStore(),
     connections: HttpConnectionChecker(),
-    voices: const SpanishNarratorLookup(),
   );
 
   runApp(

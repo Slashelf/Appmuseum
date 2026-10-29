@@ -8,16 +8,16 @@ import 'guide_answer_service.dart';
 import 'knowledge_source.dart';
 import 'spoken_sentences.dart';
 
-/// Redacta con DeepSeek a partir de la ficha oficial y los últimos mensajes.
+/// Redacta con Grok a partir de la ficha oficial y los últimos mensajes.
 ///
-/// La clave llega por `--dart-define=DEEPSEEK_API_KEY` o por Ajustes.
+/// La clave llega por `--dart-define=XAI_API_KEY` o por Ajustes.
 /// No se escribe en el código. Sin clave, [tryAsk] devuelve null.
 class RemoteGuideAnswerService implements GuideAnswerService {
   String apiKey;
   final GuideAnswerService fallback;
 
-  static const endpoint = 'https://api.deepseek.com/chat/completions';
-  static const model = 'deepseek-flash';
+  static const endpoint = 'https://api.x.ai/v1/responses';
+  static const model = 'grok-4.7';
 
   /// La pregunta más los tres mensajes anteriores.
   static const maxDialogueMessages = 4;
@@ -111,21 +111,15 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     return {
       'model': model,
       'temperature': 0.7,
-      'max_tokens': spoken ? maxSpokenTokens : maxReplyTokens,
-      'thinking': {'type': 'disabled'},
-      'messages': [
-        {
-          'role': 'system',
-          'content': _systemPrompt(
-            placeName: where.isEmpty ? 'ninguna exhibición elegida' : where,
-            officialData: _officialData(snippets),
-            summary: summary,
-            spoken: spoken,
-            languageCode: languageCode,
-          ),
-        },
-        ...dialogue,
-      ],
+      'max_output_tokens': spoken ? maxSpokenTokens : maxReplyTokens,
+      'instructions': _systemPrompt(
+        placeName: where.isEmpty ? 'ninguna exhibición elegida' : where,
+        officialData: _officialData(snippets),
+        summary: summary,
+        spoken: spoken,
+        languageCode: languageCode,
+      ),
+      'input': dialogue,
     };
   }
 
@@ -136,6 +130,8 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     required List<ChatMessage> history,
     required String placeName,
     required String summary,
+    bool spoken = false,
+    int? dialogueLimit,
   }) async {
     final body = buildBody(
       question: question,
@@ -144,6 +140,8 @@ class RemoteGuideAnswerService implements GuideAnswerService {
       history: history,
       placeName: placeName,
       summary: summary,
+      spoken: spoken,
+      dialogueLimit: dialogueLimit,
     );
     final client = HttpClient();
     try {
@@ -157,14 +155,7 @@ class RemoteGuideAnswerService implements GuideAnswerService {
         throw _failure(response.statusCode, raw);
       }
       final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return '';
-      final choices = decoded['choices'];
-      if (choices is! List || choices.isEmpty) return '';
-      final first = choices.first;
-      if (first is! Map) return '';
-      final message = first['message'];
-      if (message is! Map) return '';
-      return message['content']?.toString() ?? '';
+      return _outputText(decoded);
     } finally {
       client.close(force: true);
     }
@@ -183,7 +174,7 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     int dialogueLimit = maxDialogueMessages,
   }) async {
     if (apiKey.trim().isEmpty) return null;
-    final body = buildBody(
+    final text = await _ask(
       question: question,
       languageCode: languageCode,
       snippets: snippets,
@@ -193,35 +184,15 @@ class RemoteGuideAnswerService implements GuideAnswerService {
       spoken: true,
       dialogueLimit: dialogueLimit,
     );
-    body['stream'] = true;
-    final client = HttpClient();
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
     final buffer = SpokenSentenceBuffer();
-    final collected = StringBuffer();
-    try {
-      final request = await client.postUrl(Uri.parse(endpoint));
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${apiKey.trim()}');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8');
-      request.write(jsonEncode(body));
-      final response = await request.close().timeout(const Duration(seconds: 25));
-      if (response.statusCode != 200) {
-        final raw = await response.transform(utf8.decoder).join();
-        throw _failure(response.statusCode, raw);
-      }
-      await for (final line in response.transform(utf8.decoder).transform(const LineSplitter())) {
-        final piece = DeepSeekSse.delta(line);
-        if (piece == null || piece.isEmpty) continue;
-        collected.write(piece);
-        for (final sentence in buffer.add(piece)) {
-          onSentence(sentence);
-        }
-      }
-      final rest = buffer.flush();
-      if (rest != null) onSentence(rest);
-      final text = collected.toString().trim();
-      return text.isEmpty ? null : text;
-    } finally {
-      client.close(force: true);
+    for (final sentence in buffer.add('$trimmed ')) {
+      onSentence(sentence);
     }
+    final rest = buffer.flush();
+    if (rest != null) onSentence(rest);
+    return trimmed;
   }
 
   DeepSeekException _failure(int status, String raw) {
@@ -250,25 +221,39 @@ class RemoteGuideAnswerService implements GuideAnswerService {
     return blocks.join('\n\n');
   }
 
+  /// `output_text` y, si falta, el texto dentro de `output`.
+  static String _outputText(dynamic decoded) {
+    if (decoded is! Map) return '';
+    final direct = decoded['output_text']?.toString() ?? '';
+    if (direct.trim().isNotEmpty) return direct;
+    final output = decoded['output'];
+    if (output is! List) return '';
+    final buffer = StringBuffer();
+    for (final item in output) {
+      if (item is! Map) continue;
+      final content = item['content'];
+      if (content is! List) continue;
+      for (final part in content) {
+        if (part is! Map) continue;
+        final text = part['text']?.toString() ?? '';
+        if (text.isNotEmpty) buffer.write(text);
+      }
+    }
+    return buffer.toString();
+  }
+
   /// Texto fijo. El resumen y la ficha van al final para reutilizar esta parte.
   static const _fixedInstructions =
-      'Eres un guía de museo de Potosí Memoriam, con años de experiencia y pasión por la historia. '
-      'Conversas con un visitante frente a una exhibición de fotos e imágenes. '
-      'El visitante no está en el lugar real: está viendo la exhibición.\n'
-      'Cómo hablas:\n'
-      '- Como una persona real, cálida y natural. Varía cómo empiezas cada respuesta; nunca uses la misma frase de inicio dos veces seguidas.\n'
-      '- Nunca digas "estás aquí", "te encuentras en" ni "bienvenido a". Tampoco repitas el nombre de la exhibición en cada respuesta.\n'
-      '- No repitas datos que ya dijiste en esta conversación; si el visitante vuelve a preguntar, profundiza o da otro ángulo.\n'
-      '- Relaciona, cuando venga al caso, con lo que el visitante ya vio o preguntó.\n'
-      '- Cuenta las cosas con lógica: qué pasó, por qué importa y un detalle curioso si viene al caso.\n'
-      '- Pregunta concreta: responde lo preguntado, directo, en 2 o 3 frases como máximo. Pregunta general: resume lo más interesante en 6 a 8 frases. Nunca copies toda la información. Solo amplía si el usuario lo pide.\n'
-      '- No termines siempre con una pregunta; hazlo solo a veces, y cada vez distinta.\n'
-      '- Si la voz está activa, usa frases cortas, sin listas, símbolos, emojis ni paréntesis, y escribe los años para que se lean en voz alta.\n'
-      '- Responde siempre en el idioma en que te habla el visitante; si cambia de idioma, cámbialo tú también.\n'
-      'Qué cuentas:\n'
-      '- Usa la ficha como base. Puedes ampliarla con conocimiento histórico y cultural confiable, siempre enfocado en esta exhibición, y con cautela si no estás seguro. Si no estás seguro de un dato, no lo inventes.\n'
-      '- Los horarios, precios, direcciones y contactos solo pueden salir de la información oficial.\n'
-      '- Enfócate solo en la exhibición actual. Si preguntan por otro lugar u otro tema (por ejemplo, otra ciudad o un tema que no está en la ficha), responde solo si tiene una relación histórica directa con esta exhibición, y explica esa relación. Si no la tiene, indica amablemente que puedes ayudar con esta exhibición y que la otra información está en su propio punto de la exhibición.';
+      'Eres el guía de la Casa Nacional de la Moneda de Potosí. Eres amable y profesional, y puedes saludar. '
+      'Hablas como una persona, con frases claras. No uses listas, símbolos, emojis ni paréntesis. '
+      'Horarios, precios, direcciones y teléfonos: no lo inventes; salen solo de la ficha.\n'
+      'Si el visitante saluda, responde el saludo en una frase y ofrece ayuda.\n'
+      'Si pide un chiste o habla de algo que no es esta casa ni esta exhibición, responde exactamente, en el idioma del visitante, con esta idea: '
+      '«Mmm… no sé. No me pagan para eso, y además mi creador me dio una personalidad aburrida.»\n'
+      'Si hay una exhibición actual, habla solo de ese objeto.\n'
+      'Si la exhibición actual es «ninguna exhibición elegida», habla solo de la Casa Nacional de la Moneda y de lo que le pertenece, en pocas frases.\n'
+      'Pregunta concreta: 2 o 3 frases como máximo. Pregunta general: 4 a 6 frases. '
+      'Responde siempre en el idioma en que te habla el visitante.';
 
   /// `es`, `en`, `de` o `pt`. Va después del resumen para no mover el prefijo fijo.
   static String answerLanguage(String languageCode) {
@@ -373,6 +358,7 @@ class DeepSeekLog {
     if (key.isNotEmpty) out = out.replaceAll(key, 'oculto');
     out = out.replaceAll(RegExp(r'sk-[A-Za-z0-9_-]+'), 'oculto');
     out = out.replaceAll(RegExp(r'sk_[A-Za-z0-9]+'), 'oculto');
+    out = out.replaceAll(RegExp(r'xai-[A-Za-z0-9_-]+'), 'oculto');
     out = out.replaceAll(RegExp(r'Bearer\s+\S+'), 'Bearer oculto');
     return out;
   }

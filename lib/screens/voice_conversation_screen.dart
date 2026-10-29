@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../chat/chat_controller.dart';
+import '../chat/chat_message.dart';
 import '../chat/chat_voice.dart';
 import '../chat/guide_narrator.dart';
+import '../chat/visit_context.dart';
 import '../chat/voice_turn.dart';
 import '../core/locale/locale_controller.dart';
 import '../core/theme/app_theme.dart';
@@ -15,7 +17,7 @@ import 'app_localizations.dart';
 
 Future<bool> voiceNetworkReachable() async {
   try {
-    final result = await InternetAddress.lookup('api.deepseek.com')
+    final result = await InternetAddress.lookup('api.x.ai')
         .timeout(const Duration(seconds: 3));
     return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
   } catch (_) {
@@ -24,6 +26,67 @@ Future<bool> voiceNetworkReachable() async {
 }
 
 enum VoicePhase { listening, thinking, speaking, paused }
+
+enum VoiceSwitchChoice { keep, next, unclear }
+
+/// Elige si el visitante quiere terminar el relato o escuchar la exhibición nueva.
+VoiceSwitchChoice voiceSwitchChoice(String text) {
+  final plain = text
+      .toLowerCase()
+      .replaceAll('á', 'a')
+      .replaceAll('é', 'e')
+      .replaceAll('í', 'i')
+      .replaceAll('ó', 'o')
+      .replaceAll('ú', 'u')
+      .replaceAll('ü', 'u')
+      .replaceAll('ñ', 'n');
+  const keep = [
+    'termin',
+    'sigue',
+    'seguir',
+    'continu',
+    'acab',
+    'anterior',
+    'primero',
+    'contaba',
+    'finish',
+    'go on',
+    'keep going',
+    'weiter',
+    'beende',
+    'fertig',
+    'zu ende',
+  ];
+  const next = [
+    'nueva',
+    'nuevo',
+    'la otra',
+    'el otro',
+    'otra exhib',
+    'cuentame',
+    'cuenta esta',
+    'the new',
+    'new one',
+    'neue',
+    'anderen',
+    'jetzt die',
+  ];
+  int first(List<String> words) {
+    var best = 1 << 30;
+    for (final word in words) {
+      final at = plain.indexOf(word);
+      if (at >= 0 && at < best) best = at;
+    }
+    return best;
+  }
+
+  final keepAt = first(keep);
+  final nextAt = first(next);
+  if (keepAt == 1 << 30 && nextAt == 1 << 30) return VoiceSwitchChoice.unclear;
+  if (nextAt == 1 << 30) return VoiceSwitchChoice.keep;
+  if (keepAt == 1 << 30) return VoiceSwitchChoice.next;
+  return keepAt <= nextAt ? VoiceSwitchChoice.keep : VoiceSwitchChoice.next;
+}
 
 /// Conversación por voz a pantalla completa. Usa la misma exhibición y el mismo chat.
 class VoiceConversationScreen extends StatefulWidget {
@@ -65,6 +128,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   String _userLine = '';
   String _guideLine = '';
   bool _phoneVoice = false;
+  bool _switchAsk = false;
+  String? _boundPlaceId;
+  String _heldSpeech = '';
+  VisitContext? _visit;
   final VoiceTurn _turn = VoiceTurn();
   int _emptyStops = 0;
   int _listenGen = 0;
@@ -80,7 +147,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_visit != null) return;
+    final visit = context.read<ChatController>().visit;
+    _visit = visit;
+    _boundPlaceId = visit.place?.id;
+    visit.addListener(_onExhibition);
+  }
+
+  @override
   void dispose() {
+    _visit?.removeListener(_onExhibition);
     _silence?.cancel();
     _idle?.cancel();
     _pulse.dispose();
@@ -253,8 +331,97 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _ear.stop();
   }
 
+  void _onExhibition() {
+    if (!mounted) return;
+    final next = _visit?.place?.id;
+    if (next == _boundPlaceId) return;
+    if (_switchAsk) return;
+    final speaking = _phase == VoicePhase.speaking ||
+        _phase == VoicePhase.thinking ||
+        _pendingClips > 0 ||
+        _replyOpen;
+    if (!speaking) {
+      _boundPlaceId = next;
+      return;
+    }
+    _switchAsk = true;
+    _heldSpeech = _guideLine.trim();
+    unawaited(_cutForSwitch());
+  }
+
+  Future<void> _cutForSwitch() async {
+    try {
+      await widget.onStop?.call();
+    } catch (_) {}
+    await _narrator?.stop();
+    if (!mounted || !_switchAsk) return;
+    final t = AppLocalizations.of(context);
+    final language = context.read<LocaleController>().locale.languageCode;
+    final speech = context.read<ChatController>().replyLanguage(language);
+    await _speakLine(t.get('voiceSwitchAsk'), speech);
+  }
+
+  String _speechToResume(ChatController chat) {
+    final held = _heldSpeech.trim();
+    if (chat.messages.isEmpty) return held;
+    final last = chat.messages.last;
+    if (last.role != ChatRole.guide) return held;
+    final stored = last.text.trim();
+    if (stored.length > held.length) return stored;
+    return held;
+  }
+
+  Future<void> _answerSwitch(String text) async {
+    final choice = voiceSwitchChoice(text);
+    final t = AppLocalizations.of(context);
+    final language = context.read<LocaleController>().locale.languageCode;
+    final chat = context.read<ChatController>();
+    final speech = chat.replyLanguage(language);
+    if (choice == VoiceSwitchChoice.unclear) {
+      await _speakLine(t.get('voiceSwitchAsk'), speech);
+      return;
+    }
+    _switchAsk = false;
+    _boundPlaceId = _visit?.place?.id;
+    if (choice == VoiceSwitchChoice.keep) {
+      final held = _speechToResume(chat);
+      await _speakLine(
+        held.isEmpty ? t.get('voiceSwitchEmpty') : held,
+        speech,
+      );
+      return;
+    }
+    await _sendTurn(t.get('voiceSwitchNew'));
+  }
+
+  Future<void> _speakLine(String line, String speech) async {
+    final spoken = line.trim();
+    if (spoken.isEmpty) return;
+    _silence?.cancel();
+    _idle?.cancel();
+    _turn.reset();
+    final generation = ++_playGen;
+    _listenGen++;
+    setState(() {
+      _phase = VoicePhase.speaking;
+      _guideLine = spoken;
+    });
+    _ignoreEar = true;
+    try {
+      await _ear.stop();
+    } catch (_) {}
+    _ignoreEar = false;
+    if (!mounted || generation != _playGen) return;
+    _pendingClips++;
+    await _play(spoken, speech, generation);
+  }
+
   Future<void> _sendTurn(String text) async {
     if (_replyOpen || _phase == VoicePhase.thinking || _phase == VoicePhase.speaking) return;
+    if (_switchAsk) {
+      await _answerSwitch(text);
+      return;
+    }
     _silence?.cancel();
     _idle?.cancel();
     _turn.reset();
@@ -308,6 +475,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       dialogueLimit: 4,
       onSentence: (sentence) {
         if (!mounted || generation != _playGen) return;
+        if (_switchAsk) {
+          final extra = sentence.trim();
+          if (extra.isEmpty) return;
+          _heldSpeech = _heldSpeech.isEmpty ? extra : '$_heldSpeech $extra';
+          return;
+        }
         _pendingClips++;
         setState(() {
           _phase = VoicePhase.speaking;
@@ -336,9 +509,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         final chat = context.read<ChatController>();
         await chat.ensureNarratorVoice();
         if (!mounted || generation != _playGen) return;
-        if (chat.elevenKey.trim().isNotEmpty && chat.elevenVoiceId.trim().isEmpty) {
-          setState(() => _phoneVoice = true);
-        }
         final speaker = widget.speaker ?? DeviceChatSpeaker();
         final narrator = _voice(speaker);
         narrator.onIdle = () {
@@ -348,8 +518,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         narrator.enqueue(
           sentence,
           languageCode: language,
-          apiKey: () => chat.elevenKey,
-          voiceId: () => chat.elevenVoiceId,
+          apiKey: () => chat.speechKey,
+          voiceId: () => chat.guideVoice,
         );
         return;
       }

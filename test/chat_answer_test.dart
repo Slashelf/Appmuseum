@@ -206,7 +206,10 @@ void main() {
     final closed = _chat([sanFrancisco, merced], remote: withoutBeacon);
     await closed.submit('san francisco', languageCode: 'es', noDataText: noData);
     await closed.submit('horario', languageCode: 'es', noDataText: noData);
-    expect(withoutBeacon.seen.last, isEmpty);
+    expect(withoutBeacon.seen.last, hasLength(1));
+    expect(withoutBeacon.seen.last.single.id, isNot('sf'));
+    expect(withoutBeacon.seen.last.single.id, isNot('merced'));
+    expect(_facts(withoutBeacon), contains('26222777'));
     expect(_facts(withoutBeacon), isNot(contains('Horario de manana')));
     expect(_facts(withoutBeacon), isNot(contains('Horario de tarde')));
     closed.dispose();
@@ -430,9 +433,10 @@ void main() {
     expect(chat.messages, isEmpty);
     await chat.submit('https://ejemplo.test/aviso', languageCode: 'es', noDataText: noData);
     expect(remote.calls, 0);
-    expect(chat.messages.last.text, contains('lugares'));
+    expect(chat.messages.last.text, contains('pagan'));
     await chat.submit('dolor de cabeza', languageCode: 'es', noDataText: noData);
-    expect(remote.calls, 1);
+    expect(remote.calls, 0);
+    expect(chat.messages.last.text, contains('pagan'));
     await chat.submit(
       'dolor de cabeza',
       languageCode: 'es',
@@ -440,13 +444,15 @@ void main() {
       spoken: true,
       fromVoice: true,
     );
-    expect(remote.calls, 2);
-    expect(chat.messages.last.text, 'respuesta de la guia');
+    expect(remote.calls, 0);
+    expect(chat.messages.last.text, contains('pagan'));
+    await chat.submit('cuentame un chiste', languageCode: 'es', noDataText: noData);
+    expect(remote.calls, 0);
     await chat.submit('¿Cómo estás?', languageCode: 'es', noDataText: noData);
-    expect(remote.calls, 3);
+    expect(remote.calls, 1);
     expect(chat.messages.last.text, 'respuesta de la guia');
-    expect(ChatFaq.offTopicReply('en'), contains('places'));
-    expect(ChatFaq.offTopicReply('de'), contains('Orten'));
+    expect(ChatFaq.offTopicReply('en'), contains("don't pay me"));
+    expect(ChatFaq.offTopicReply('de'), contains('nicht bezahlt'));
     expect(ChatFaq.cannotDraft('en'), contains('draft'));
     expect(ChatFaq.cannotDraft('de'), contains('formulieren'));
     chat.dispose();
@@ -604,7 +610,7 @@ void main() {
     expect(firstFacts, isNot(contains('Calle Hoyos')));
     expect(firstFacts, isNot(contains('14:30')));
 
-    final system = (RemoteGuideAnswerService(
+    final system = RemoteGuideAnswerService(
       apiKey: 'test',
       fallback: LocalGuideAnswerService(),
     ).buildBody(
@@ -613,10 +619,10 @@ void main() {
       snippets: remote.seen.last,
       history: remote.lastHistory,
       placeName: remote.lastPlace,
-    )['messages'] as List).first['content'] as String;
+    )['instructions'] as String;
     expect(system, contains('Exhibición actual: Criptas de San Francisco'));
     expect(system.split('Exhibición actual:').first, isNot(contains('Criptas de San Francisco')));
-    expect(system, contains('no está en el lugar real'));
+    expect(system, contains('habla solo de ese objeto'));
     expect(system, contains('Exhibición actual'));
     expect(system, isNot(contains('El usuario está en')));
     expect(system, isNot(contains('14:30')));
@@ -704,13 +710,13 @@ void main() {
     }
 
     String systemOf(Map<String, dynamic> body) {
-      return (body['messages'] as List).first['content'] as String;
+      return body['instructions'] as String;
     }
 
     await chat.submit('¿Cuándo fue fundada?', languageCode: 'es', noDataText: noData);
     final founded = packageFor('¿Cuándo fue fundada?');
     final foundedSystem = systemOf(founded);
-    expect(founded['max_tokens'], 450);
+    expect(founded['max_output_tokens'], 450);
     expect(founded['temperature'], 0.7);
     expect(foundedSystem, contains('2 o 3 frases como máximo'));
     expect(foundedSystem, contains('Fundado en 1547'));
@@ -728,17 +734,14 @@ void main() {
     await chat.submit('Cuéntame sobre esto', languageCode: 'es', noDataText: noData);
     final overview = packageFor('Cuéntame sobre esto');
     final overviewSystem = systemOf(overview);
-    expect(overview['max_tokens'], 450);
-    expect(overviewSystem, contains('6 a 8 frases'));
-    expect(overviewSystem, contains('Nunca copies toda la información'));
-    expect(overviewSystem, contains('Solo amplía si el usuario lo pide'));
+    expect(overview['max_output_tokens'], 450);
+    expect(overviewSystem, contains('4 a 6 frases'));
     expect(overviewSystem, contains('Exhibición: Criptas de San Francisco'));
     expect(remote.seen.last.single.id, 'sf');
 
     await chat.submit('¿Qué es la Casa de Moneda?', languageCode: 'es', noDataText: noData);
     final mintSystem = systemOf(packageFor('¿Qué es la Casa de Moneda?'));
-    expect(mintSystem, contains('relación histórica directa'));
-    expect(mintSystem, contains('otra ciudad'));
+    expect(mintSystem, contains('habla solo de ese objeto'));
     expect(mintSystem, isNot(contains('1572')));
     expect(mintSystem, isNot(contains('Calle Bolívar')));
     expect(mintSystem, isNot(contains('1759')));
@@ -750,9 +753,7 @@ void main() {
     await chat.submit('Cuéntame sobre esto', languageCode: 'es', noDataText: noData);
     final mercedBody = packageFor('Cuéntame sobre esto');
     final mercedSystem = systemOf(mercedBody);
-    final dialogue = (mercedBody['messages'] as List)
-        .where((message) => message['role'] != 'system')
-        .toList();
+    final dialogue = mercedBody['input'] as List;
     expect(chat.messages, hasLength(8));
     expect(chat.messages.first.text, '¿Cuándo fue fundada?');
     expect(remote.lastPlace, 'Criptas de La Merced');
@@ -761,7 +762,7 @@ void main() {
       mercedSystem.split('Resumen de la visita:').first,
       foundedSystem.split('Resumen de la visita:').first,
     );
-    expect(mercedSystem, contains('6 a 8 frases'));
+    expect(mercedSystem, contains('4 a 6 frases'));
     expect(mercedSystem, contains('Calle Hoyos'));
     expect(mercedSystem, contains('1555'));
     expect(mercedSystem, isNot(contains('Calle Tarija')));
@@ -1841,13 +1842,13 @@ void main() {
     expect(find.byType(GuideSettingsScreen), findsOneWidget);
     expect(find.text('Ajustes'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.tap(find.byKey(const Key('chat-test-grok')));
     await tester.pumpAndSettle();
     expect(probe.deepCalls, 0);
     expect(find.textContaining('Falta la clave'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('chat-settings-deepseek')), 'clave-mala');
-    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.enterText(find.byKey(const Key('chat-settings-grok')), 'clave-mala');
+    await tester.tap(find.byKey(const Key('chat-test-grok')));
     await tester.pumpAndSettle();
     expect(probe.deepCalls, 1);
     expect(probe.lastDeepKey, 'clave-mala');
@@ -1855,19 +1856,16 @@ void main() {
     expect(find.text('Conectado'), findsNothing);
 
     probe.deep = const ConnectionReport(ok: true, status: 200);
-    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.tap(find.byKey(const Key('chat-test-grok')));
     await tester.pumpAndSettle();
     expect(find.text('Conectado'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('chat-settings-eleven')), 'eleven-mala');
-    await tester.enterText(find.byKey(const Key('chat-settings-voice')), 'voz-de-prueba-123456');
-    await tester.tap(find.byKey(const Key('chat-test-eleven')));
-    await tester.pumpAndSettle();
-    expect(probe.elevenCalls, 1);
-    expect(probe.lastElevenKey, 'eleven-mala');
-    expect(chat.elevenVoiceId, 'voz-de-prueba-123456');
-    expect(chat.elevenKey, 'eleven-mala');
-    expect(find.text('401 unauthorized'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('chat-voice-man')));
+    await tester.pump();
+    expect(chat.guideVoice, 'leo');
+    await tester.tap(find.byKey(const Key('chat-voice-woman')));
+    await tester.pump();
+    expect(chat.guideVoice, 'ara');
 
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
@@ -1899,10 +1897,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('chat-settings')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('chat-settings-deepseek')), findsNothing);
+    expect(find.byKey(const Key('chat-settings-grok')), findsNothing);
     expect(find.text('Esta clave viene de la compilación.'), findsOneWidget);
     expect(find.text('compiled-deep'), findsNothing);
-    await tester.tap(find.byKey(const Key('chat-test-deepseek')));
+    await tester.tap(find.byKey(const Key('chat-test-grok')));
     await tester.pumpAndSettle();
     expect(probe.lastDeepKey, 'compiled-deep');
     expect(find.text('403 forbidden'), findsOneWidget);

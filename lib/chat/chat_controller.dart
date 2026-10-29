@@ -24,7 +24,8 @@ enum ChatAnswerMode { local, deepseek }
 /// Cambiar de lugar no borra los mensajes ni abre el chat.
 class ChatController extends ChangeNotifier {
   static const modeStorageKey = 'chat_answer_mode';
-  static const keyStorageKey = 'deepseek_api_key';
+  static const keyStorageKey = 'xai_api_key';
+  static const legacyKeyStorageKey = 'deepseek_api_key';
   static const elevenKeyStorageKey = 'elevenlabs_api_key';
   static const elevenVoiceStorageKey = 'elevenlabs_voice_id';
   static const micLanguageStorageKey = 'chat_mic_language';
@@ -47,7 +48,6 @@ class ChatController extends ChangeNotifier {
   String micLanguage = 'auto';
   bool tookOffline = false;
   bool _restored = false;
-  Future<String>? _voiceLookup;
   final VisitMemory _memory = VisitMemory();
 
   ChatController({
@@ -85,7 +85,13 @@ class ChatController extends ChangeNotifier {
     return runtimeKey.trim();
   }
 
-  /// Clave de ElevenLabs. No se escribe en registros.
+  /// La misma clave de Grok sirve para el texto y para la voz.
+  String get speechKey => deepSeekKey;
+
+  /// `ara` por defecto. `leo` si el visitante eligió la voz de hombre.
+  String get guideVoice => elevenVoiceId.trim() == 'leo' ? 'leo' : 'ara';
+
+  /// Clave de ElevenLabs. No se envía a xAI.
   String get elevenKey {
     if (hasCompiledElevenKey) return compiledElevenKey.trim();
     return elevenRuntimeKey.trim();
@@ -97,7 +103,7 @@ class ChatController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedMode = prefs.getString(modeStorageKey);
-      if (savedMode == ChatAnswerMode.deepseek.name) {
+      if (savedMode == ChatAnswerMode.deepseek.name || savedMode == 'grok') {
         _mode = ChatAnswerMode.deepseek;
       } else if (savedMode == ChatAnswerMode.local.name) {
         _mode = ChatAnswerMode.local;
@@ -106,6 +112,7 @@ class ChatController extends ChangeNotifier {
       if (const {'auto', 'es', 'en', 'pt'}.contains(savedMic)) {
         micLanguage = savedMic;
       }
+      await _dropLegacyKey();
       final deep = await _migrate(keyStorageKey);
       final eleven = await _migrate(elevenKeyStorageKey);
       final voice = await _migrate(elevenVoiceStorageKey);
@@ -118,6 +125,18 @@ class ChatController extends ChangeNotifier {
       _restored = true;
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// La clave vieja de DeepSeek no se manda a xAI.
+  Future<void> _dropLegacyKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey(legacyKeyStorageKey)) {
+      await prefs.remove(legacyKeyStorageKey);
+    }
+    final leftover = (await secrets.read(legacyKeyStorageKey) ?? '').trim();
+    if (leftover.isNotEmpty) {
+      await secrets.write(legacyKeyStorageKey, null);
+    }
   }
 
   Future<String> _migrate(String key) async {
@@ -161,14 +180,14 @@ class ChatController extends ChangeNotifier {
   void updateElevenKey(String value) {
     if (hasCompiledElevenKey) return;
     elevenRuntimeKey = value.trim();
-    _voiceLookup = null;
     _saveSecret(elevenKeyStorageKey, elevenRuntimeKey);
   }
 
   void updateVoiceId(String value) {
     final next = value.trim();
-    if (next.isEmpty) _voiceLookup = null;
+    if (next == elevenVoiceId) return;
     elevenVoiceId = next;
+    notifyListeners();
     _saveSecret(elevenVoiceStorageKey, elevenVoiceId);
   }
 
@@ -200,28 +219,8 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  /// Pide un narrador premade en español y lo guarda.
-  /// Un id guardado que ya no está en la cuenta se cambia por ese narrador.
-  /// Sin clave, sin listado o si la lista falla, queda vacío y habla el teléfono.
-  Future<String> ensureNarratorVoice() {
-    final pending = _voiceLookup;
-    if (pending != null) return pending;
-    final run = _resolveVoice();
-    _voiceLookup = run;
-    return run;
-  }
-
-  Future<String> _resolveVoice() async {
-    final source = voices;
-    final key = elevenKey.trim();
-    if (source == null || key.isEmpty) return elevenVoiceId.trim();
-    final picked = (await source.resolve(key, elevenVoiceId))?.trim() ?? '';
-    if (picked.isEmpty) return '';
-    if (elevenVoiceId.trim() == picked) return picked;
-    if (elevenKey.trim() != key) return elevenVoiceId.trim();
-    updateVoiceId(picked);
-    return picked;
-  }
+  /// Voz de Grok ya elegida. No consulta otra red.
+  Future<String> ensureNarratorVoice() async => guideVoice;
 
   Future<void> setMicLanguage(String value) async {
     const allowed = {'auto', 'es', 'en', 'pt'};
@@ -270,7 +269,7 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
-    if (ChatFaq.isSpam(trimmed)) {
+    if (ChatFaq.isSpam(trimmed) || ChatFaq.isOffTopic(trimmed)) {
       store.add(ChatMessage.guide(ChatFaq.offTopicReply(languageCode)));
       notifyListeners();
       return;

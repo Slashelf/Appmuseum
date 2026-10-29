@@ -116,7 +116,7 @@ class SpanishNarrator {
 class SpanishNarratorLookup implements NarratorVoiceSource {
   const SpanishNarratorLookup({this.load});
 
-  static final voicesUri = Uri.parse('https://api.elevenlabs.io/v1/voices');
+  static final voicesUri = Uri.parse('https://api.x.ai/v1/tts/voices');
   static const lookupBudget = Duration(seconds: 8);
 
   /// Doble de prueba. Si es null, se usa el listado oficial.
@@ -127,42 +127,22 @@ class SpanishNarratorLookup implements NarratorVoiceSource {
 
   @override
   Future<String?> resolve(String apiKey, String currentId) async {
-    final secret = apiKey.trim();
-    if (secret.isEmpty) return null;
-    final saved = currentId.trim();
-    try {
-      final voices = load == null ? await download(secret) : await load!(secret);
-      if (saved.isNotEmpty && _listed(voices, saved)) return saved;
-      final id = SpanishNarrator.choose(voices);
-      if (id == null) {
-        debugPrint('ElevenLabs: sin narrador premade en español');
-      }
-      return id;
-    } catch (error) {
-      debugPrint('ElevenLabs voces: ${DeepSeekLog.safe('$error', secret)}');
-      return saved.isEmpty ? null : saved;
-    }
-  }
-
-  static bool _listed(List<Map<String, dynamic>> voices, String id) {
-    for (final voice in voices) {
-      if (voice['voice_id']?.toString().trim() == id) return true;
-    }
-    return false;
+    if (currentId.trim() == 'leo') return 'leo';
+    return 'ara';
   }
 
   static Future<List<Map<String, dynamic>>> download(String apiKey) async {
     final client = HttpClient();
     try {
       final request = await client.getUrl(voicesUri).timeout(lookupBudget);
-      request.headers.set('xi-api-key', apiKey.trim());
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${apiKey.trim()}');
       final response = await request.close().timeout(lookupBudget);
       final raw = await response.transform(utf8.decoder).join().timeout(lookupBudget);
       if (response.statusCode != 200) {
         final compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
         final clipped = compact.length <= 180 ? compact : compact.substring(0, 180);
         debugPrint(
-          'ElevenLabs voces: ${response.statusCode} ${DeepSeekLog.safe(clipped, apiKey)}',
+          'Voces: ${response.statusCode} ${DeepSeekLog.safe(clipped, apiKey)}',
         );
         return const [];
       }
